@@ -1,5 +1,8 @@
 # 🏥 HealthAI – Smart Healthcare Management System
 
+
+
+Live Demo URL  : https://ai-healthcare-portal.onrender.com
 HealthAI is a comprehensive Healthcare Management System designed to streamline hospital operations, patient management, doctor scheduling, electronic health records, resource allocation, and disease prediction using Machine Learning.
 
 The system provides separate portals for Administrators, Doctors, and Patients, enabling efficient healthcare management through an intuitive web interface.
