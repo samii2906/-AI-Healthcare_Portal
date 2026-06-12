@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MediCare AI — Resources</title>
+  <link rel="stylesheet" href="static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<nav>
+  <div class="nav-brand"><span class="logo">🏥</span> MediCare AI</div>
+  <div class="nav-links">
+    <a href="dashboard.html">📊 Dashboard</a>
+    <a href="predict.html">🧠 AI Predict</a>
+    <a href="appointments.html">📅 Appointments</a>
+    <a href="patients.html">👥 Patients</a>
+    <a href="beds.html">🛏 Beds</a>
+    <a href="resources.html" class="active">📦 Resources</a>
+    <a href="ehr.html">📋 EHR</a>
+  </div>
+  <div class="nav-right">
+    <span id="user-badge" style="background:var(--lavender);padding:6px 14px;border-radius:8px;font-size:0.85rem;font-weight:600"></span>
+    <button class="btn-logout" onclick="logout()">Logout</button>
+  </div>
+</nav>
+
+<div style="padding:2rem;max-width:1100px;margin:0 auto">
+  <div class="page-header">
+    <h1>📦 Resource Management</h1>
+    <p>Hospital equipment and supply tracking</p>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+    <div class="card">
+      <div class="card-title">Resource Utilization</div>
+      <div id="resource-list"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Utilization Chart</div>
+      <div class="chart-container"><canvas id="res-chart"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:5000/api';
+const user = JSON.parse(localStorage.getItem('user')||'{}');
+if(!user.username) window.location.href='index.html';
+document.getElementById('user-badge').textContent=`👤 ${user.username} (${user.role})`;
+function logout(){ localStorage.clear(); window.location.href='index.html'; }
+
+const icons = {Ventilator:'🫁', 'Oxygen Unit':'💨', 'ECG Machine':'💓', 'MRI Scanner':'🔬'};
+async function loadResources(){
+  const res = await fetch(`${API}/resources`).then(r=>r.json());
+  document.getElementById('resource-list').innerHTML = res.map(r=>{
+    const pct = Math.round((r.available/r.total)*100);
+    const color = pct>60 ? '#B5EAD7' : pct>30 ? '#FFF0A0' : '#FFB3C6';
+    return `
+      <div style="margin-bottom:1.2rem">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-weight:600;font-size:0.9rem">${icons[r.resource_name]||'📦'} ${r.resource_name}</span>
+          <span style="font-size:0.8rem;color:var(--muted)">${r.available}/${r.total} available</span>
+        </div>
+        <div class="resource-bar">
+          <div class="resource-fill" style="width:${pct}%;background:${color}"></div>
+        </div>
+        <div style="font-size:0.75rem;color:var(--muted);margin-top:2px">${pct}% available — ${r.resource_type}</div>
+      </div>`;
+  }).join('');
+
+  new Chart(document.getElementById('res-chart'),{
+    type:'polarArea',
+    data:{
+      labels:res.map(r=>r.resource_name),
+      datasets:[{data:res.map(r=>Math.round((r.available/r.total)*100)),
+        backgroundColor:['#B5EAD7','#C9B8FF','#FFB3C6','#B5D5FF'],
+        borderWidth:0}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}
+  });
+}
+
+loadResources();
+</script>
+</body>
+</html>

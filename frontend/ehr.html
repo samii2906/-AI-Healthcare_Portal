@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>HealthAI — EHR Records</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* ── DROPDOWN ── */
+    .dropdown{position:relative}
+    .dropdown-menu{
+      position:absolute;top:calc(100% + 8px);left:0;
+      background:var(--white);border-radius:12px;
+      box-shadow:0 8px 32px rgba(100,80,180,.18);
+      border:1.5px solid var(--border);
+      min-width:200px;z-index:300;display:none;overflow:hidden
+    }
+    .dropdown-menu.show{display:block}
+    .dropdown-item{
+      display:flex;align-items:center;gap:10px;
+      padding:12px 18px;font-size:.88rem;font-weight:500;
+      color:var(--text);text-decoration:none;transition:background .15s
+    }
+    .dropdown-item:hover{background:#f0ebff}
+    .dropdown-divider{height:1px;background:var(--border);margin:4px 0}
+
+    /* ── MODALS ── */
+    .modal-overlay{
+      position:fixed;inset:0;background:rgba(60,40,120,.35);
+      z-index:500;display:flex;align-items:center;justify-content:center
+    }
+    .modal-box{
+      background:var(--white);border-radius:20px;padding:2rem;
+      width:100%;max-width:600px;
+      box-shadow:0 20px 60px rgba(100,80,200,.2);
+      max-height:92vh;overflow-y:auto
+    }
+    .modal-header{
+      display:flex;justify-content:space-between;
+      align-items:center;margin-bottom:1.5rem
+    }
+    .modal-title{font-size:1.15rem;font-weight:800;color:var(--text)}
+    .close-btn{
+      background:var(--pink);border:none;
+      width:32px;height:32px;border-radius:50%;
+      cursor:pointer;font-size:1rem;font-weight:700;color:var(--text)
+    }
+
+    /* ── EHR CARD ── */
+    .ehr-card{
+      background:var(--white);border-radius:14px;
+      border:1.5px solid var(--border);
+      margin-bottom:1rem;overflow:hidden;
+      transition:box-shadow .2s
+    }
+    .ehr-card:hover{box-shadow:0 4px 20px rgba(100,80,180,.12)}
+    .ehr-card-header{
+      padding:14px 18px;
+      display:flex;justify-content:space-between;align-items:center;
+      cursor:pointer
+    }
+    .ehr-card-body{padding:0 18px 16px;display:none}
+    .ehr-card-body.open{display:block}
+    .ehr-label{
+      font-size:.75rem;font-weight:700;color:var(--muted);
+      text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px
+    }
+    .ehr-value{
+      font-size:.9rem;color:var(--text);
+      background:#faf8ff;border-radius:8px;
+      padding:10px 14px;border:1px solid var(--border);
+      line-height:1.6;min-height:36px
+    }
+    .avatar{
+      width:38px;height:38px;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      font-weight:800;font-size:.95rem;flex-shrink:0
+    }
+    .tab-pill{
+      padding:8px 18px;border-radius:20px;border:2px solid var(--border);
+      background:var(--white);font-size:.85rem;font-weight:600;
+      cursor:pointer;color:var(--muted);transition:all .2s
+    }
+    .tab-pill.active{
+      background:var(--lavender);border-color:var(--lavender);color:var(--text)
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════ NAVBAR ══ -->
+<nav>
+  <div class="nav-brand"><span class="logo">🏥</span> HealthAI</div>
+  <div class="nav-links">
+    <a href="/dashboard">📊 Dashboard</a>
+
+    <div class="dropdown" id="dd-patients">
+      <a href="#" onclick="toggleDD('dd-patients',event)"
+         style="padding:8px 16px;border-radius:8px;text-decoration:none;
+                color:var(--muted);font-size:.9rem;font-weight:500">
+        👥 Patients ▾
+      </a>
+      <div class="dropdown-menu" id="dd-patients-menu">
+        <a class="dropdown-item" href="/patients">👥 All Patients</a>
+        <a class="dropdown-item" href="/patients">➕ Register Patient</a>
+        <div class="dropdown-divider"></div>
+        <a class="dropdown-item" href="/ehr"
+           style="background:#f0ebff;font-weight:700">
+          📋 EHR Records
+        </a>
+      </div>
+    </div>
+
+    <div class="dropdown" id="dd-ai">
+      <a href="#" onclick="toggleDD('dd-ai',event)"
+         style="padding:8px 16px;border-radius:8px;text-decoration:none;
+                color:var(--muted);font-size:.9rem;font-weight:500">
+        🧠 AI Tools ▾
+      </a>
+      <div class="dropdown-menu" id="dd-ai-menu">
+        <a class="dropdown-item" href="/predict">🔬 Disease Prediction</a>
+        <a class="dropdown-item" href="/predict">📈 Outcome Prediction</a>
+        <div class="dropdown-divider"></div>
+        <a class="dropdown-item" href="/predict">📊 Prediction History</a>
+      </div>
+    </div>
+
+    <a href="/appointments">📅 Appointments</a>
+    <a href="/beds">🛏 Beds</a>
+    <a href="/staff">👔 Staff</a>
+    <a href="/ehr"
+       style="background:var(--lavender);border-radius:8px;padding:8px 14px;
+              font-weight:700;color:var(--text)">
+      📋 EHR
+    </a>
+  </div>
+  <div class="nav-right">
+    <span id="user-badge"
+      style="background:var(--lavender);padding:6px 14px;
+             border-radius:8px;font-size:.85rem;font-weight:600">
+    </span>
+    <button class="btn-logout" onclick="logout()">Logout</button>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════════ ADD EHR MODAL ══ -->
+<div class="modal-overlay" id="add-modal" style="display:none">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">📋 Add EHR Record</span>
+      <button class="close-btn" onclick="closeModal('add-modal')">✕</button>
+    </div>
+    <div id="add-alert"></div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Patient *</label>
+        <select id="a-pid"></select>
+      </div>
+      <div class="form-group">
+        <label>Doctor *</label>
+        <select id="a-did"></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Visit Date *</label>
+      <input type="date" id="a-date">
+    </div>
+    <div class="form-group">
+      <label>Diagnosis *</label>
+      <input type="text" id="a-diag"
+             placeholder="e.g. Type 2 Diabetes Mellitus, Stage 2 Hypertension">
+    </div>
+    <div class="form-group">
+      <label>Prescription / Medications</label>
+      <textarea id="a-presc" rows="3"
+                placeholder="e.g. Metformin 500mg twice daily after meals&#10;Amlodipine 5mg once daily&#10;Aspirin 75mg once daily"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Treatment Plan / Notes</label>
+      <textarea id="a-treat" rows="3"
+                placeholder="e.g. Patient advised low-sugar diet. Follow up in 3 months. Blood sugar to be monitored weekly."></textarea>
+    </div>
+    <div class="form-group">
+      <label>Lab Reports</label>
+      <input type="text" id="a-lab"
+             placeholder="e.g. HbA1c: 7.2%, FBS: 145 mg/dL, Creatinine: 1.1 mg/dL">
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:1.2rem">
+      <button class="btn btn-primary" style="flex:1" onclick="submitEHR()">
+        💾 Save EHR Record
+      </button>
+      <button class="btn" style="background:var(--border)"
+              onclick="closeModal('add-modal')">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════ VIEW EHR MODAL ══ -->
+<div class="modal-overlay" id="view-modal" style="display:none">
+  <div class="modal-box" style="max-width:660px">
+    <div class="modal-header">
+      <span class="modal-title" id="view-title">📋 EHR Record</span>
+      <button class="close-btn" onclick="closeModal('view-modal')">✕</button>
+    </div>
+    <div id="view-body"></div>
+    <div style="display:flex;gap:10px;margin-top:1.5rem;flex-wrap:wrap">
+      <button class="btn btn-primary" id="dl-single-btn"
+              onclick="downloadSingleEHR()">
+        📥 Download This EHR PDF
+      </button>
+      <button class="btn btn-success" id="dl-all-btn"
+              onclick="downloadAllEHR()">
+        📁 Download All EHRs (Patient)
+      </button>
+      <button class="btn btn-info" onclick="closeModal('view-modal')">
+        Close
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════ PAGE CONTENT ══ -->
+<div style="padding:2rem;max-width:1300px;margin:0 auto">
+
+  <!-- Hero -->
+  <div style="background:linear-gradient(135deg,#f0e8ff,#e8f8f0);
+              border-radius:var(--radius);padding:1.8rem 2rem;
+              margin-bottom:2rem;
+              display:flex;justify-content:space-between;align-items:center;
+              flex-wrap:wrap;gap:12px">
+    <div>
+      <h1 style="font-size:1.6rem;font-weight:800;color:var(--text)">
+        📋 Electronic Health Records
+      </h1>
+      <p style="color:var(--muted);margin-top:4px">
+        View, manage and download complete patient EHR records
+      </p>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" style="padding:12px 22px;font-size:.95rem"
+              onclick="openAddModal()">
+        ➕ Add EHR Record
+      </button>
+      <button class="btn"
+              style="padding:12px 20px;font-size:.95rem;
+                     background:linear-gradient(135deg,#C9B8FF,#b0a0ff);color:var(--text)"
+              onclick="window.open('/api/reports/ehr','_blank')">
+        📥 Download All PDF
+      </button>
+    </div>
+  </div>
+
+  <!-- Stats row -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);
+              gap:1rem;margin-bottom:2rem"
+       id="ehr-stats">
+  </div>
+
+  <!-- Charts row -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;
+              gap:1.5rem;margin-bottom:2rem">
+    <div class="card">
+      <div class="card-title">📊 EHR Records by Department</div>
+      <div style="height:220px"><canvas id="dept-chart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">📈 Monthly EHR Trend</div>
+      <div style="height:220px"><canvas id="trend-chart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Filter + search bar -->
+  <div class="card" style="margin-bottom:1.5rem">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div class="tab-pill active" onclick="filterByStatus('all',this)">
+        All Records
+      </div>
+      <div class="tab-pill" onclick="filterByStatus('has_lab',this)">
+        🔬 Has Lab Reports
+      </div>
+      <div class="tab-pill" onclick="filterByStatus('has_prescription',this)">
+        💊 Has Prescription
+      </div>
+      <div style="flex:1"></div>
+      <!-- Patient filter -->
+      <select id="filter-patient"
+              style="padding:8px 14px;border:2px solid var(--border);
+                     border-radius:10px;font-size:.85rem;
+                     color:var(--text);background:#faf8ff;min-width:180px"
+              onchange="applyFilters()">
+        <option value="">All Patients</option>
+      </select>
+      <!-- Search -->
+      <input type="text" id="ehr-search"
+             placeholder="🔍 Search diagnosis, patient…"
+             style="width:240px" oninput="applyFilters()">
+    </div>
+  </div>
+
+  <!-- EHR records list -->
+  <div id="ehr-list">
+    <div style="text-align:center;padding:3rem;color:var(--muted)">
+      <div style="font-size:3rem;margin-bottom:12px">📋</div>
+      <div>Loading EHR records…</div>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<script>
+const user = JSON.parse(localStorage.getItem('hai_user') || '{}');
+if (!user.username) window.location.href = '/';
+document.getElementById('user-badge').textContent =
+  `👤 ${user.username} (${user.role})`;
+function logout() { localStorage.removeItem('hai_user'); window.location.href = '/'; }
+
+/* ── DROPDOWN ── */
+function toggleDD(id, e) {
+  e.preventDefault(); e.stopPropagation();
+  const menu = document.getElementById(id + '-menu');
+  const open = menu.classList.contains('show');
+  closeAllDD();
+  if (!open) menu.classList.add('show');
+}
+function closeAllDD() {
+  document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.remove('show'));
+}
+document.addEventListener('click', closeAllDD);
+
+/* ── MODAL HELPERS ── */
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+/* ── GLOBAL STATE ── */
+let allEHR      = [];
+let allPatients = [];
+let allDoctors  = [];
+let currentEID  = null;
+let currentPID  = null;
+let statusFilter= 'all';
+
+const avatarColors = ['#FFB3C6','#C9B8FF','#B5EAD7','#FFD5B8','#B5D5FF','#FFF0A0'];
+
+/* ── OPEN ADD MODAL ── */
+async function openAddModal() {
+  document.getElementById('add-modal').style.display = 'flex';
+  document.getElementById('a-date').valueAsDate = new Date();
+  document.getElementById('add-alert').innerHTML = '';
+
+  if (!allPatients.length)
+    allPatients = await fetch('/api/patients').then(r => r.json());
+  if (!allDoctors.length)
+    allDoctors  = await fetch('/api/doctors').then(r => r.json());
+
+  document.getElementById('a-pid').innerHTML =
+    '<option value="">— Select patient —</option>' +
+    allPatients.map(p =>
+      `<option value="${p.id}">${p.name} (${p.age || '?'}y, ${p.blood_group || '—'})</option>`
+    ).join('');
+
+  document.getElementById('a-did').innerHTML =
+    '<option value="">— Select doctor —</option>' +
+    allDoctors.map(d =>
+      `<option value="${d.id}">${d.name} — ${d.department}</option>`
+    ).join('');
+}
+
+/* ── SUBMIT EHR ── */
+async function submitEHR() {
+  const pid  = document.getElementById('a-pid').value;
+  const did  = document.getElementById('a-did').value;
+  const date = document.getElementById('a-date').value;
+  const diag = document.getElementById('a-diag').value.trim();
+
+  if (!pid || !did || !date || !diag) {
+    document.getElementById('add-alert').innerHTML =
+      '<div class="alert alert-error">Patient, doctor, date and diagnosis are required.</div>';
+    return;
+  }
+
+  const body = {
+    patient_id:  parseInt(pid),
+    doctor_id:   parseInt(did),
+    date,
+    diagnosis:   diag,
+    prescription:document.getElementById('a-presc').value,
+    treatment:   document.getElementById('a-treat').value,
+    lab_reports: document.getElementById('a-lab').value,
+  };
+
+  const res  = await fetch('/api/ehr', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+
+  if (data.success) {
+    document.getElementById('add-alert').innerHTML =
+      '<div class="alert alert-success">✅ EHR record saved successfully!</div>';
+    ['a-diag','a-presc','a-treat','a-lab'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    setTimeout(() => { closeModal('add-modal'); loadAll(); }, 1400);
+  } else {
+    document.getElementById('add-alert').innerHTML =
+      `<div class="alert alert-error">❌ ${data.message || 'Error saving EHR'}</div>`;
+  }
+}
+
+/* ── VIEW EHR ── */
+function viewEHR(r) {
+  currentEID = r.id;
+  currentPID = r.patient_id;
+
+  document.getElementById('view-title').textContent =
+    `📋 EHR-${String(r.id).zfill4()} — ${r.patient_name || 'Patient'}`;
+
+  const col = avatarColors[(r.patient_id || 0) % avatarColors.length];
+
+  document.getElementById('view-body').innerHTML = `
+    <!-- Patient + Doctor strip -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1.2rem">
+      <div style="background:#f8f5ff;border-radius:12px;padding:14px;
+                  display:flex;gap:12px;align-items:center">
+        <div class="avatar" style="background:${col}">
+          ${(r.patient_name||'?')[0].toUpperCase()}
+        </div>
+        <div>
+          <div style="font-weight:800;color:var(--text)">${r.patient_name || '—'}</div>
+          <div style="font-size:.78rem;color:var(--muted)">
+            Age ${r.patient_age || '—'} &nbsp;|&nbsp; ${r.patient_gender || '—'}
+            &nbsp;|&nbsp; <span class="badge badge-purple" style="font-size:.7rem">
+              ${r.patient_blood || '—'}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div style="background:#f0f8ff;border-radius:12px;padding:14px;
+                  display:flex;gap:12px;align-items:center">
+        <div class="avatar" style="background:#B5D5FF">👨‍⚕️</div>
+        <div>
+          <div style="font-weight:800;color:var(--text)">${r.doctor_name || '—'}</div>
+          <div style="font-size:.78rem;color:var(--muted)">
+            ${r.department || '—'}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Visit info -->
+    <div style="display:flex;gap:10px;margin-bottom:1rem;flex-wrap:wrap">
+      <span style="background:var(--lavender);padding:4px 14px;
+                   border-radius:20px;font-size:.82rem;font-weight:600">
+        📅 ${r.visit_date || '—'}
+      </span>
+      <span style="background:var(--mint);padding:4px 14px;
+                   border-radius:20px;font-size:.82rem;font-weight:600">
+        🆔 EHR-${String(r.id).padStart(4,'0')}
+      </span>
+    </div>
+
+    <!-- Clinical blocks -->
+    ${clinicalBlock('🔍 Diagnosis', r.diagnosis, '#FFF0F3', '#E8698A')}
+    ${clinicalBlock('💊 Prescription / Medications', r.prescription, '#F0FFF4', '#4CAF8A')}
+    ${clinicalBlock('🏥 Treatment Plan', r.treatment_history, '#F0F8FF', '#5B9BD5')}
+    ${clinicalBlock('🔬 Lab Reports', r.lab_reports, '#FFFBF0', '#E8965A')}
+  `;
+
+  document.getElementById('view-modal').style.display = 'flex';
+}
+
+function clinicalBlock(label, content, bg, accent) {
+  if (!content || !content.trim()) return '';
+  return `
+    <div style="margin-bottom:10px">
+      <div style="font-size:.78rem;font-weight:700;color:${accent};
+                  margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">
+        ${label}
+      </div>
+      <div style="background:${bg};border-radius:10px;padding:12px 14px;
+                  font-size:.88rem;color:var(--text);line-height:1.7;
+                  border-left:3px solid ${accent}">
+        ${content.replace(/\n/g,'<br>')}
+      </div>
+    </div>`;
+}
+
+/* ── DOWNLOAD HELPERS ── */
+function downloadSingleEHR() {
+  if (!currentEID) return;
+  window.open(`/api/reports/ehr/${currentEID}`, '_blank');
+}
+function downloadAllEHR() {
+  if (!currentPID) return;
+  window.open(`/api/reports/patient/${currentPID}/ehr`, '_blank');
+}
+function downloadEHRFromCard(eid, pid, e) {
+  e.stopPropagation();
+  window.open(`/api/reports/ehr/${eid}`, '_blank');
+}
+function downloadAllEHRFromCard(pid, e) {
+  e.stopPropagation();
+  window.open(`/api/reports/patient/${pid}/ehr`, '_blank');
+}
+
+/* ── FILTER ── */
+function filterByStatus(status, el) {
+  statusFilter = status;
+  document.querySelectorAll('.tab-pill').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  applyFilters();
+}
+
+function applyFilters() {
+  const q     = document.getElementById('ehr-search').value.toLowerCase();
+  const patId = document.getElementById('filter-patient').value;
+
+  let filtered = allEHR.filter(r => {
+    const matchQ =
+      (r.diagnosis         || '').toLowerCase().includes(q) ||
+      (r.patient_name      || '').toLowerCase().includes(q) ||
+      (r.doctor_name       || '').toLowerCase().includes(q) ||
+      (r.prescription      || '').toLowerCase().includes(q);
+    const matchP = !patId || String(r.patient_id) === patId;
+    const matchS =
+      statusFilter === 'all'              ? true :
+      statusFilter === 'has_lab'          ? !!(r.lab_reports && r.lab_reports.trim()) :
+      statusFilter === 'has_prescription' ? !!(r.prescription && r.prescription.trim()) :
+      true;
+    return matchQ && matchP && matchS;
+  });
+
+  renderEHR(filtered);
+}
+
+/* ── RENDER EHR CARDS ── */
+function renderEHR(list) {
+  if (!list.length) {
+    document.getElementById('ehr-list').innerHTML = `
+      <div style="text-align:center;padding:3rem;color:var(--muted)">
+        <div style="font-size:3rem;margin-bottom:12px">📋</div>
+        <div style="font-size:.95rem">No EHR records found.</div>
+        <button class="btn btn-primary" style="margin-top:1rem"
+                onclick="openAddModal()">
+          ➕ Add First EHR Record
+        </button>
+      </div>`;
+    return;
+  }
+
+  document.getElementById('ehr-list').innerHTML = list.map(r => {
+    const col = avatarColors[(r.patient_id || 0) % avatarColors.length];
+    const hasLab  = !!(r.lab_reports && r.lab_reports.trim());
+    const hasPresc= !!(r.prescription && r.prescription.trim());
+
+    return `
+    <div class="ehr-card">
+      <!-- Card header — click to expand -->
+      <div class="ehr-card-header" onclick="toggleCard(${r.id})">
+        <div style="display:flex;align-items:center;gap:14px;flex:1;min-width:0">
+          <!-- Avatar -->
+          <div class="avatar" style="background:${col}">
+            ${(r.patient_name||'?')[0].toUpperCase()}
+          </div>
+          <!-- Info -->
+          <div style="min-width:0">
+            <div style="font-weight:800;font-size:.95rem;color:var(--text)">
+              ${r.patient_name || '—'}
+            </div>
+            <div style="font-size:.78rem;color:var(--muted);margin-top:2px;
+                        overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+              🔍 ${(r.diagnosis || 'No diagnosis').slice(0,60)}
+            </div>
+          </div>
+        </div>
+
+        <!-- Right side chips -->
+        <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap">
+          <span style="background:var(--lavender);padding:3px 10px;
+                       border-radius:20px;font-size:.75rem;font-weight:600">
+            📅 ${r.visit_date || '—'}
+          </span>
+          <span style="background:#f0f8ff;padding:3px 10px;
+                       border-radius:20px;font-size:.75rem;font-weight:600;
+                       color:#5B9BD5">
+            👨‍⚕️ ${(r.doctor_name || '—').split(' ').slice(0,2).join(' ')}
+          </span>
+          ${hasLab   ? '<span style="background:var(--peach);padding:3px 8px;border-radius:20px;font-size:.72rem;font-weight:700">🔬 Lab</span>' : ''}
+          ${hasPresc ? '<span style="background:var(--mint);padding:3px 8px;border-radius:20px;font-size:.72rem;font-weight:700">💊 Rx</span>' : ''}
+          <span style="font-size:.8rem;color:var(--muted)">
+            EHR-${String(r.id).padStart(4,'0')}
+          </span>
+          <span style="font-size:1rem;color:var(--muted)" id="chevron-${r.id}">▼</span>
+        </div>
+      </div>
+
+      <!-- Expandable body -->
+      <div class="ehr-card-body" id="body-${r.id}">
+        <!-- Department + doctor detail -->
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <span style="background:#e8f4ff;padding:4px 12px;border-radius:20px;font-size:.78rem;font-weight:600;color:#5B9BD5">
+            🏥 ${r.department || '—'}
+          </span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+          <div>
+            <div class="ehr-label">🔍 Diagnosis</div>
+            <div class="ehr-value">${r.diagnosis || '—'}</div>
+          </div>
+          <div>
+            <div class="ehr-label">🔬 Lab Reports</div>
+            <div class="ehr-value">${r.lab_reports || 'Not recorded'}</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:10px">
+          <div class="ehr-label">💊 Prescription / Medications</div>
+          <div class="ehr-value">${(r.prescription || 'Not prescribed').replace(/\n/g,'<br>')}</div>
+        </div>
+
+        <div style="margin-bottom:14px">
+          <div class="ehr-label">🏥 Treatment Plan</div>
+          <div class="ehr-value">${(r.treatment_history || 'Not recorded').replace(/\n/g,'<br>')}</div>
+        </div>
+
+        <!-- Action buttons -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:10px;
+                    border-top:1px solid var(--border)">
+          <button class="btn btn-info"
+                  style="padding:6px 14px;font-size:.8rem"
+                  onclick='viewEHR(${JSON.stringify(r).replace(/'/g,"&#39;")})'>
+            👁 View Full
+          </button>
+          <button class="btn btn-primary"
+                  style="padding:6px 14px;font-size:.8rem"
+                  onclick="downloadEHRFromCard(${r.id},${r.patient_id},event)">
+            📥 Download This EHR
+          </button>
+          <button class="btn btn-success"
+                  style="padding:6px 14px;font-size:.8rem"
+                  onclick="downloadAllEHRFromCard(${r.patient_id},event)">
+            📁 All EHRs (${r.patient_name?.split(' ')[0] || 'Patient'})
+          </button>
+          <a href="/predict" style="text-decoration:none">
+            <button class="btn" style="padding:6px 14px;font-size:.8rem;
+                    background:linear-gradient(135deg,#C9B8FF,#b0a0ff);color:var(--text)">
+              🧠 AI Predict
+            </button>
+          </a>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── TOGGLE CARD EXPAND ── */
+function toggleCard(id) {
+  const body    = document.getElementById(`body-${id}`);
+  const chevron = document.getElementById(`chevron-${id}`);
+  const isOpen  = body.classList.contains('open');
+  // Close all others
+  document.querySelectorAll('.ehr-card-body').forEach(b => b.classList.remove('open'));
+  document.querySelectorAll('[id^="chevron-"]').forEach(c => c.textContent = '▼');
+  // Toggle current
+  if (!isOpen) {
+    body.classList.add('open');
+    chevron.textContent = '▲';
+  }
+}
+
+// polyfill padStart as zfill4 for template literals
+String.prototype.zfill4 = function() { return String(this).padStart(4,'0'); };
+
+/* ── STATS ── */
+function renderStats(list) {
+  const total   = list.length;
+  const withLab = list.filter(r => r.lab_reports && r.lab_reports.trim()).length;
+  const withRx  = list.filter(r => r.prescription && r.prescription.trim()).length;
+  const patients = new Set(list.map(r => r.patient_id)).size;
+
+  const cards = [
+    { icon:'📋', label:'Total EHR Records', val:total,    cls:'lavender' },
+    { icon:'👥', label:'Patients Covered',  val:patients, cls:'pink' },
+    { icon:'💊', label:'With Prescription', val:withRx,   cls:'mint' },
+    { icon:'🔬', label:'With Lab Reports',  val:withLab,  cls:'peach' },
+  ];
+  document.getElementById('ehr-stats').innerHTML = cards.map(c => `
+    <div class="stat-card ${c.cls}"
+         style="border-radius:var(--radius);padding:1.2rem">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div class="stat-num" style="font-size:2rem">${c.val}</div>
+          <div class="stat-label">${c.label}</div>
+        </div>
+        <div style="font-size:2rem">${c.icon}</div>
+      </div>
+    </div>`).join('');
+}
+
+/* ── CHARTS ── */
+let deptChart = null, trendChart = null;
+function drawCharts(list) {
+  // Department breakdown
+  const depts = {};
+  list.forEach(r => {
+    const d = r.department || 'General';
+    depts[d] = (depts[d] || 0) + 1;
+  });
+  const dkeys = Object.keys(depts);
+  const dcols = ['#C9B8FF','#FFB3C6','#B5EAD7','#FFD5B8','#B5D5FF','#FFF0A0'];
+
+  if (deptChart) deptChart.destroy();
+  deptChart = new Chart(document.getElementById('dept-chart'), {
+    type: 'doughnut',
+    data: {
+      labels: dkeys,
+      datasets: [{
+        data:            dkeys.map(k => depts[k]),
+        backgroundColor: dcols.slice(0, dkeys.length),
+        borderWidth:     0,
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, cutout:'60%',
+      plugins:{ legend:{ position:'bottom', labels:{ font:{ size:10 } } } }
+    }
+  });
+
+  // Monthly trend (last 6 months)
+  const months = [];
+  const counts = [];
+  for (let i = 5; i >= 0; i--) {
+    const d   = new Date();
+    d.setMonth(d.getMonth() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const lbl = d.toLocaleString('default', { month:'short' });
+    months.push(lbl);
+    counts.push(list.filter(r => (r.visit_date || '').startsWith(key)).length);
+  }
+
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(document.getElementById('trend-chart'), {
+    type: 'line',
+    data: {
+      labels: months,
+      datasets: [{
+        label:           'EHR Records',
+        data:            counts,
+        borderColor:     '#9b8df0',
+        backgroundColor: 'rgba(155,141,240,.12)',
+        tension:         0.4,
+        pointBackgroundColor: '#9b8df0',
+        fill:            true,
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{ y:{ beginAtZero:true, ticks:{ stepSize:1 } } }
+    }
+  });
+}
+
+/* ── POPULATE PATIENT FILTER ── */
+function populatePatientFilter(list) {
+  const patients = {};
+  list.forEach(r => { if (r.patient_id) patients[r.patient_id] = r.patient_name; });
+  document.getElementById('filter-patient').innerHTML =
+    '<option value="">All Patients</option>' +
+    Object.entries(patients).map(([id, name]) =>
+      `<option value="${id}">${name}</option>`
+    ).join('');
+}
+
+/* ── LOAD ALL ── */
+async function loadAll() {
+  // Fetch EHR with joined patient + doctor data
+  const raw = await fetch('/api/ehr').then(r => r.json());
+
+  // Also fetch patient details to enrich cards
+  if (!allPatients.length)
+    allPatients = await fetch('/api/patients').then(r => r.json());
+
+  const patMap = {};
+  allPatients.forEach(p => { patMap[p.id] = p; });
+
+  allEHR = raw.map(r => ({
+    ...r,
+    patient_age:    patMap[r.patient_id]?.age    || '',
+    patient_gender: patMap[r.patient_id]?.gender || '',
+    patient_blood:  patMap[r.patient_id]?.blood_group || '',
+  }));
+
+  renderStats(allEHR);
+  drawCharts(allEHR);
+  populatePatientFilter(allEHR);
+  renderEHR(allEHR);
+}
+
+/* ── INIT ── */
+loadAll();
+</script>
+</body>
+</html>

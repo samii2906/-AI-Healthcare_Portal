@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>HealthAI — AI Tools</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .dropdown{position:relative}
+    .dropdown-menu{position:absolute;top:calc(100% + 8px);left:0;background:var(--white);
+      border-radius:12px;box-shadow:0 8px 32px rgba(100,80,180,.18);
+      border:1.5px solid var(--border);min-width:200px;z-index:300;display:none;overflow:hidden}
+    .dropdown-menu.show{display:block}
+    .dropdown-item{display:flex;align-items:center;gap:10px;padding:12px 18px;
+      font-size:.88rem;font-weight:500;color:var(--text);text-decoration:none;transition:background .15s}
+    .dropdown-item:hover{background:#f0ebff}
+    .dropdown-divider{height:1px;background:var(--border);margin:4px 0}
+
+    /* disease selector cards */
+    .disease-card {
+      border:2.5px solid var(--border); border-radius:14px;
+      padding:16px; cursor:pointer; transition:all .2s;
+      text-align:center; background:var(--white);
+    }
+    .disease-card:hover  { border-color:var(--lavender); background:#f8f4ff; }
+    .disease-card.active { border-color:#9b8df0; background:#f0ebff;
+                           box-shadow:0 4px 16px rgba(155,141,240,.25); }
+    .disease-card .dc-icon  { font-size:2rem; margin-bottom:6px; }
+    .disease-card .dc-label { font-weight:700; font-size:.88rem; color:var(--text); }
+
+    /* result */
+    .result-card {
+      background:linear-gradient(135deg,#f0e8ff,#ffe0ec);
+      border-radius:var(--radius); padding:1.5rem; text-align:center;
+    }
+    .risk-score { font-size:3.5rem; font-weight:900; line-height:1; }
+    .risk-high   { color:#d62839; }
+    .risk-medium { color:#f4a261; }
+    .risk-low    { color:#2d9e6a; }
+
+    /* history table highlight */
+    .sev-High   { color:#d62839; font-weight:700; }
+    .sev-Medium { color:#f4a261; font-weight:700; }
+    .sev-Low    { color:#2d9e6a; font-weight:700; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand"><span class="logo">🏥</span> HealthAI</div>
+  <div class="nav-links">
+    <a href="/dashboard">📊 Dashboard</a>
+    <div class="dropdown" id="dd-patients">
+      <a href="#" onclick="toggleDD('dd-patients',event)"
+         style="padding:8px 16px;border-radius:8px;text-decoration:none;color:var(--muted);font-size:.9rem;font-weight:500">
+        👥 Patients ▾
+      </a>
+      <div class="dropdown-menu" id="dd-patients-menu">
+        <a class="dropdown-item" href="/patients">👥 All Patients</a>
+        <a class="dropdown-item" href="/patients">➕ Register Patient</a>
+        <div class="dropdown-divider"></div>
+        <a class="dropdown-item" href="/ehr">📋 EHR Records</a>
+      </div>
+    </div>
+    <div class="dropdown" id="dd-ai">
+      <a href="#" onclick="toggleDD('dd-ai',event)"
+         style="padding:8px 16px;border-radius:8px;text-decoration:none;color:var(--text);font-size:.9rem;font-weight:500;background:var(--lavender)">
+        🧠 AI Tools ▾
+      </a>
+      <div class="dropdown-menu" id="dd-ai-menu">
+        <a class="dropdown-item" href="/predict">🔬 Disease Prediction</a>
+        <a class="dropdown-item" href="#outcome-section" onclick="closeAllDD();scrollToSection('outcome-section')">📈 Outcome Prediction</a>
+        <div class="dropdown-divider"></div>
+        <a class="dropdown-item" href="#history-section" onclick="closeAllDD();scrollToSection('history-section')">📊 Prediction History</a>
+      </div>
+    </div>
+    <a href="/appointments">📅 Appointments</a>
+    <a href="/beds">🛏 Beds</a>
+    <a href="/staff">👔 Staff</a>
+  </div>
+  <div class="nav-right">
+    <span id="user-badge"
+      style="background:var(--lavender);padding:6px 14px;border-radius:8px;font-size:.85rem;font-weight:600">
+    </span>
+    <button class="btn-logout" onclick="logout()">Logout</button>
+  </div>
+</nav>
+
+<div style="padding:2rem;max-width:1200px;margin:0 auto">
+
+  <!-- Hero -->
+  <div style="background:linear-gradient(135deg,#f0e8ff,#e8f0ff);border-radius:var(--radius);
+              padding:1.8rem 2rem;margin-bottom:2rem">
+    <h1 style="font-size:1.6rem;font-weight:800;color:var(--text)">🧠 AI Prediction Tools</h1>
+    <p style="color:var(--muted);margin-top:4px">
+      ML-powered disease risk analysis and patient outcome prediction
+    </p>
+  </div>
+  <button class="btn" style="padding:8px 16px;font-size:.85rem;
+        background:linear-gradient(135deg,#B5EAD7,#96d9be);color:var(--text)"
+        onclick="window.open('/api/reports/predictions','_blank')">
+  📥 Download PDF
+</button>
+
+  <!-- ══════ DISEASE PREDICTION ══════ -->
+  <div class="card" style="margin-bottom:2rem">
+    <div class="card-title">🔬 Disease Prediction</div>
+
+    <!-- Disease selector -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:1.5rem">
+      <div class="disease-card active" id="dc-diabetes"
+           onclick="switchDisease('diabetes',this)">
+        <div class="dc-icon">🩸</div>
+        <div class="dc-label">Diabetes</div>
+      </div>
+      <div class="disease-card" id="dc-heart"
+           onclick="switchDisease('heart',this)">
+        <div class="dc-icon">❤️</div>
+        <div class="dc-label">Heart Disease</div>
+      </div>
+      <div class="disease-card" id="dc-kidney"
+           onclick="switchDisease('kidney',this)">
+        <div class="dc-icon">🫘</div>
+        <div class="dc-label">Kidney Disease</div>
+      </div>
+      <div class="disease-card" id="dc-outcome"
+           onclick="switchDisease('outcome',this)">
+        <div class="dc-icon">📈</div>
+        <div class="dc-label">Outcome</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+
+      <!-- Left: Input form -->
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem">
+          <span id="disease-icon" style="font-size:1.5rem">🩸</span>
+          <b id="disease-title" style="font-size:1rem;color:var(--text)">
+            Diabetes Risk Assessment
+          </b>
+        </div>
+
+        <!-- Patient selector -->
+        <div class="form-group">
+          <label>Patient (optional — saves result to DB)</label>
+          <select id="pred-patient">
+            <option value="">— Select patient —</option>
+          </select>
+        </div>
+
+        <div id="pred-form"></div>
+
+        <button class="btn btn-primary" style="width:100%;margin-top:1rem;padding:12px"
+                onclick="runPrediction()">
+          🔬 Run AI Prediction
+        </button>
+      </div>
+
+      <!-- Right: Result -->
+      <div id="result-panel" style="display:flex;align-items:center;justify-content:center;
+                                     background:#faf8ff;border-radius:var(--radius);
+                                     min-height:300px">
+        <div style="text-align:center;color:var(--muted)">
+          <div style="font-size:3rem;margin-bottom:12px">🔬</div>
+          <div style="font-size:.9rem">Fill in the form and click<br><b>Run AI Prediction</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════ CHARTS ══════ -->
+  <div id="charts-section"
+       style="display:none;margin-bottom:2rem">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+      <div class="card">
+        <div class="card-title">🍩 Risk Gauge</div>
+        <div style="height:240px"><canvas id="gauge-chart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">📊 Risk Factor Breakdown</div>
+        <div style="height:240px"><canvas id="factor-chart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════ OUTCOME PREDICTION ══════ -->
+  <div class="card" id="outcome-section" style="margin-bottom:2rem">
+    <div class="card-title">📈 Patient Outcome Prediction</div>
+    <p style="color:var(--muted);font-size:.88rem;margin-bottom:1.2rem">
+      Predict recovery probability, ICU requirement and estimated stay duration.
+    </p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+      <div>
+        <div class="form-group"><label>Patient</label>
+          <select id="out-patient">
+            <option value="">— Select patient —</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Age</label>
+            <input type="number" id="out-age" value="50" min="1" max="120"></div>
+          <div class="form-group"><label>Severity (1–4)</label>
+            <input type="number" id="out-severity" value="2" min="1" max="4"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Comorbidities</label>
+            <input type="number" id="out-comorbidities" value="1" min="0" max="10"></div>
+          <div class="form-group"><label>BMI</label>
+            <input type="number" id="out-bmi" step="0.1" value="25.0"></div>
+        </div>
+        <div class="form-group"><label>Blood Pressure (mmHg)</label>
+          <input type="number" id="out-bp" value="120"></div>
+        <button class="btn btn-success" style="width:100%;margin-top:1rem;padding:12px"
+                onclick="runOutcome()">
+          📈 Predict Outcome
+        </button>
+      </div>
+      <div id="outcome-result"
+           style="display:flex;align-items:center;justify-content:center;
+                  background:#f0fff8;border-radius:var(--radius);min-height:260px">
+        <div style="text-align:center;color:var(--muted)">
+          <div style="font-size:3rem;margin-bottom:12px">📈</div>
+          <div style="font-size:.9rem">Enter patient details and<br>click <b>Predict Outcome</b></div>
+        </div>
+      </div>
+    </div>
+    <!-- Outcome charts -->
+    <div id="outcome-charts" style="display:none;margin-top:1.5rem">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.5rem">
+        <div class="card" style="text-align:center">
+          <div class="card-title">Recovery Probability</div>
+          <div style="height:200px"><canvas id="recovery-chart"></canvas></div>
+        </div>
+        <div class="card" style="text-align:center">
+          <div class="card-title">ICU vs Ward</div>
+          <div style="height:200px"><canvas id="icu-chart"></canvas></div>
+        </div>
+        <div class="card" style="text-align:center">
+          <div class="card-title">Expected Stay</div>
+          <div style="height:200px"><canvas id="stay-chart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════ PREDICTION HISTORY ══════ -->
+  <div class="card" id="history-section">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <div class="card-title" style="margin:0">📊 Prediction History</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;width:360px">
+        <div class="card" style="padding:.8rem;text-align:center">
+          <div style="height:150px"><canvas id="hist-severity-chart"></canvas></div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:4px">By Severity</div>
+        </div>
+        <div class="card" style="padding:.8rem;text-align:center">
+          <div style="height:150px"><canvas id="hist-disease-chart"></canvas></div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:4px">By Disease</div>
+        </div>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+  
+        <thead>
+         <tr>
+           <th>#</th><th>Patient</th><th>Disease</th>
+           <th>Risk Score</th><th>Severity</th><th>Date</th><th>Download</th>
+         </tr>
+        </thead>
+            
+        <tbody id="hist-tbody">
+          <tr><td colspan="6" style="text-align:center;color:var(--muted)">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<script>
+const user = JSON.parse(localStorage.getItem('hai_user') || '{}');
+if (!user.username) window.location.href = '/';
+document.getElementById('user-badge').textContent = `👤 ${user.username} (${user.role})`;
+function logout() { localStorage.removeItem('hai_user'); window.location.href = '/'; }
+
+function scrollToSection(id) {
+  document.getElementById(id)?.scrollIntoView({ behavior:'smooth' });
+}
+
+/* ── DROPDOWN ── */
+function toggleDD(id, e) {
+  e.preventDefault(); e.stopPropagation();
+  const menu = document.getElementById(id + '-menu');
+  const isOpen = menu.classList.contains('show');
+  closeAllDD();
+  if (!isOpen) menu.classList.add('show');
+}
+function closeAllDD() {
+  document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.remove('show'));
+}
+document.addEventListener('click', closeAllDD);
+
+/* ── DISEASE CONFIG ── */
+let currentDisease = 'diabetes';
+let gaugeChart = null, factorChart = null;
+let recoveryChart = null, icuChart = null, stayChart = null;
+let histSevChart = null, histDisChart = null;
+
+const diseaseConfig = {
+  diabetes: {
+    icon:'🩸', title:'Diabetes Risk Assessment',
+    fields:[
+      { id:'glucose',        label:'Glucose (mg/dL)',    default:110 },
+      { id:'bmi',            label:'BMI',                default:26.0 },
+      { id:'age',            label:'Age',                default:45 },
+      { id:'blood_pressure', label:'Blood Pressure',     default:80 },
+      { id:'insulin',        label:'Insulin (mU/L)',     default:85 },
+      { id:'cholesterol',    label:'Cholesterol',        default:200 },
+    ]
+  },
+  heart: {
+    icon:'❤️', title:'Heart Disease Risk Assessment',
+    fields:[
+      { id:'age',            label:'Age',                default:55 },
+      { id:'cholesterol',    label:'Cholesterol',        default:230 },
+      { id:'blood_pressure', label:'Blood Pressure',     default:140 },
+      { id:'bmi',            label:'BMI',                default:28.0 },
+      { id:'smoking',        label:'Smoking (0=No, 1=Yes)', default:0 },
+      { id:'diabetes',       label:'Diabetes (0=No, 1=Yes)',default:0 },
+    ]
+  },
+  kidney: {
+    icon:'🫘', title:'Kidney Disease Risk Assessment',
+    fields:[
+      { id:'age',            label:'Age',                default:50 },
+      { id:'blood_pressure', label:'Blood Pressure',     default:90 },
+      { id:'glucose',        label:'Glucose (mg/dL)',    default:110 },
+      { id:'blood_urea',     label:'Blood Urea (mg/dL)', default:30 },
+      { id:'creatinine',     label:'Creatinine',         default:1.2 },
+      { id:'hemoglobin',     label:'Hemoglobin (g/dL)',  default:13 },
+    ]
+  },
+  outcome: {
+    icon:'📈', title:'Patient Outcome Prediction',
+    fields:[
+      { id:'age',            label:'Age',                default:60 },
+      { id:'severity',       label:'Severity (1–4)',     default:2 },
+      { id:'comorbidities',  label:'Comorbidities',      default:2 },
+      { id:'bmi',            label:'BMI',                default:25 },
+      { id:'blood_pressure', label:'Blood Pressure',     default:120 },
+    ]
+  }
+};
+
+function switchDisease(d, el) {
+  currentDisease = d;
+  document.querySelectorAll('.disease-card').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderForm();
+  document.getElementById('result-panel').innerHTML = `
+    <div style="text-align:center;color:var(--muted)">
+      <div style="font-size:3rem;margin-bottom:12px">🔬</div>
+      <div style="font-size:.9rem">Fill in the form and click<br><b>Run AI Prediction</b></div>
+    </div>`;
+  document.getElementById('charts-section').style.display = 'none';
+}
+
+function renderForm() {
+  const cfg = diseaseConfig[currentDisease];
+  document.getElementById('disease-icon').textContent  = cfg.icon;
+  document.getElementById('disease-title').textContent = cfg.title;
+  const html = cfg.fields.map((f, i) => {
+    const open  = i % 2 === 0 ? '<div class="form-row">' : '';
+    const close = i % 2 === 1 || i === cfg.fields.length - 1 ? '</div>' : '';
+    return `${open}<div class="form-group">
+      <label>${f.label}</label>
+      <input type="number" step="any" id="pf-${f.id}" value="${f.default}">
+    </div>${close}`;
+  }).join('');
+  document.getElementById('pred-form').innerHTML = html;
+}
+
+/* ── RUN DISEASE PREDICTION ── */
+async function runPrediction() {
+  const cfg  = diseaseConfig[currentDisease];
+  const body = { disease_type: currentDisease };
+  cfg.fields.forEach(f => {
+    body[f.id] = parseFloat(document.getElementById(`pf-${f.id}`)?.value) || 0;
+  });
+  const pid = document.getElementById('pred-patient').value;
+  if (pid) body.patient_id = parseInt(pid);
+
+  const res  = await fetch('/api/predict', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (data.error) { alert('Prediction error: ' + data.error); return; }
+
+  showResult(data, cfg);
+  showCharts(data, cfg, body);
+  if (pid) loadHistory();   // refresh history table
+}
+
+function showResult(data, cfg) {
+  const cls  = data.severity === 'High' ? 'risk-high' :
+               data.severity === 'Medium' ? 'risk-medium' : 'risk-low';
+  const emj  = data.severity === 'High' ? '🔴' :
+               data.severity === 'Medium' ? '🟡' : '🟢';
+  const sevBg= data.severity === 'High' ? '#ffe0e0' :
+               data.severity === 'Medium' ? '#fff6e0' : '#e0ffe8';
+
+  document.getElementById('result-panel').innerHTML = `
+    <div class="result-card" style="width:100%">
+      <div style="font-size:2.5rem;margin-bottom:6px">${emj}</div>
+      <div class="risk-score ${cls}">${data.risk_score}%</div>
+      <div style="font-size:.85rem;color:var(--muted);margin:6px 0 12px">Risk Score</div>
+      <div style="background:var(--white);border-radius:10px;padding:12px;margin-bottom:10px;text-align:left">
+        <div style="margin-bottom:4px"><b>Disease:</b> ${data.disease}</div>
+        <div><b>Severity:</b>
+          <span style="background:${sevBg};padding:2px 10px;border-radius:20px;font-weight:700">
+            ${data.severity}
+          </span>
+        </div>
+      </div>
+      <div style="background:#f0ebff;border-radius:10px;padding:12px;text-align:left;font-size:.85rem">
+        <b>💊 Recommendation:</b><br>${data.recommendation}
+      </div>
+    </div>`;
+}
+
+function showCharts(data, cfg, inputBody) {
+  document.getElementById('charts-section').style.display = 'block';
+  document.getElementById('charts-section').scrollIntoView({ behavior:'smooth', block:'nearest' });
+
+  // Gauge
+  if (gaugeChart) gaugeChart.destroy();
+  gaugeChart = new Chart(document.getElementById('gauge-chart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Risk %', 'Safe %'],
+      datasets: [{
+        data: [data.risk_score, 100 - data.risk_score],
+        backgroundColor: [
+          data.severity==='High' ? '#FFB3C6' :
+          data.severity==='Medium' ? '#FFD5B8' : '#B5EAD7',
+          '#f0ebff'
+        ],
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, cutout:'72%',
+      plugins:{
+        legend:{ position:'bottom' },
+        tooltip:{ callbacks:{ label: c => `${c.label}: ${c.parsed.toFixed(1)}%` } }
+      }
+    }
+  });
+
+  // Factor bar chart
+  const factors = cfg.fields.map(f => ({
+    label: f.label.split(' ')[0],
+    val:   parseFloat(inputBody[f.id]) || 0
+  }));
+  if (factorChart) factorChart.destroy();
+  factorChart = new Chart(document.getElementById('factor-chart'), {
+    type: 'bar',
+    data: {
+      labels: factors.map(f => f.label),
+      datasets: [{
+        label: 'Value',
+        data: factors.map(f => f.val),
+        backgroundColor: ['#C9B8FF','#FFB3C6','#B5EAD7','#FFD5B8','#B5D5FF','#FFF0A0'],
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{ y:{ beginAtZero:true } }
+    }
+  });
+}
+
+/* ── OUTCOME PREDICTION ── */
+async function runOutcome() {
+  const body = {
+    disease_type:  'outcome',
+    age:           parseFloat(document.getElementById('out-age').value)         || 50,
+    severity:      parseFloat(document.getElementById('out-severity').value)    || 2,
+    comorbidities: parseFloat(document.getElementById('out-comorbidities').value)|| 1,
+    bmi:           parseFloat(document.getElementById('out-bmi').value)         || 25,
+    blood_pressure:parseFloat(document.getElementById('out-bp').value)          || 120,
+  };
+  const pid = document.getElementById('out-patient').value;
+  if (pid) body.patient_id = parseInt(pid);
+
+  const res  = await fetch('/api/predict', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (data.error) { alert('Error: ' + data.error); return; }
+
+  const recov  = 100 - data.risk_score;
+  const icuPct = data.severity==='High' ? 75 : data.severity==='Medium' ? 40 : 15;
+  const stay   = data.severity==='High' ? 12 :
+                 data.severity==='Medium' ? 6 : 2;
+
+  const cls = data.severity==='High' ? 'risk-high' :
+              data.severity==='Medium' ? 'risk-medium' : 'risk-low';
+  const emj = data.severity==='High' ? '🔴' :
+              data.severity==='Medium' ? '🟡' : '🟢';
+
+  document.getElementById('outcome-result').innerHTML = `
+    <div style="width:100%;padding:1rem">
+      <div style="text-align:center;margin-bottom:1rem">
+        <div style="font-size:2rem">${emj}</div>
+        <div class="risk-score ${cls}" style="font-size:2.5rem">${data.risk_score}%</div>
+        <div style="font-size:.8rem;color:var(--muted)">Adverse outcome risk</div>
+      </div>
+      <div style="background:#f0ebff;border-radius:10px;padding:12px;font-size:.85rem;margin-bottom:8px">
+        <b>Recovery probability:</b>
+        <span style="float:right;font-weight:700;color:#2d9e6a">${recov.toFixed(1)}%</span>
+      </div>
+      <div style="background:#ffe8f0;border-radius:10px;padding:12px;font-size:.85rem;margin-bottom:8px">
+        <b>ICU requirement:</b>
+        <span style="float:right;font-weight:700;color:#d62839">${icuPct}%</span>
+      </div>
+      <div style="background:#e8f8f0;border-radius:10px;padding:12px;font-size:.85rem;margin-bottom:8px">
+        <b>Expected stay:</b>
+        <span style="float:right;font-weight:700;color:#2d6a4f">~${stay} days</span>
+      </div>
+      <div style="background:#fff8e0;border-radius:10px;padding:12px;font-size:.82rem">
+        💊 ${data.recommendation}
+      </div>
+    </div>`;
+
+  document.getElementById('outcome-charts').style.display = 'block';
+
+  // Recovery doughnut
+  if (recoveryChart) recoveryChart.destroy();
+  recoveryChart = new Chart(document.getElementById('recovery-chart'), {
+    type:'doughnut',
+    data:{
+      labels:['Recovery','Risk'],
+      datasets:[{ data:[recov, data.risk_score],
+        backgroundColor:['#B5EAD7','#FFB3C6'], borderWidth:0 }]
+    },
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'65%',
+      plugins:{ legend:{ position:'bottom' } } }
+  });
+
+  // ICU bar
+  if (icuChart) icuChart.destroy();
+  icuChart = new Chart(document.getElementById('icu-chart'), {
+    type:'bar',
+    data:{
+      labels:['ICU','Ward'],
+      datasets:[{ data:[icuPct, 100-icuPct],
+        backgroundColor:['#FFB3C6','#B5D5FF'], borderRadius:6, label:'' }]
+    },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{ y:{ beginAtZero:true, max:100 } } }
+  });
+
+  // Stay gauge
+  if (stayChart) stayChart.destroy();
+  stayChart = new Chart(document.getElementById('stay-chart'), {
+    type:'doughnut',
+    data:{
+      labels:['Days','Remaining'],
+      datasets:[{ data:[stay, Math.max(14-stay, 0)],
+        backgroundColor:['#C9B8FF','#f0ebff'], borderWidth:0 }]
+    },
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'65%',
+      plugins:{ legend:{ display:false },
+        tooltip:{ callbacks:{ label: c => c.label==='Days'?`${stay} days est.`:'' } }
+      }
+    }
+  });
+
+  if (pid) loadHistory();
+}
+
+/* ── PREDICTION HISTORY ── */
+async function loadHistory() {
+  const data = await fetch('/api/predictions').then(r => r.json());
+
+  // Table
+  const sevColors = { High:'#ffe0e0', Medium:'#fff6e0', Low:'#e0ffe8' };
+  
+  document.getElementById('hist-tbody').innerHTML = data.length
+  ? data.map(p => `
+      <tr>
+        <td><b>#${p.id}</b></td>
+        <td>${p.patient_name || `Patient #${p.patient_id}`}</td>
+        <td>${p.predicted_disease}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="background:var(--border);border-radius:20px;height:8px;
+                        flex:1;overflow:hidden">
+              <div style="height:100%;border-radius:20px;width:${p.risk_score}%;
+                background:${p.severity==='High'?'#FFB3C6':
+                             p.severity==='Medium'?'#FFD5B8':'#B5EAD7'}">
+              </div>
+            </div>
+            <span style="font-size:.82rem;font-weight:700">${p.risk_score}%</span>
+          </div>
+        </td>
+        <td><span class="sev-${p.severity}">${p.severity}</span></td>
+        <td style="font-size:.8rem;color:var(--muted)">
+          ${p.created_at?.slice(0,16)||'—'}
+        </td>
+        <td>
+          <button class="btn"
+            style="padding:4px 10px;font-size:.73rem;
+                   background:linear-gradient(135deg,#C9B8FF,#b0a0ff);color:var(--text)"
+            onclick="window.open('/api/reports/patient/${p.patient_id}/predictions','_blank')">
+            📥 PDF
+          </button>
+        </td>
+      </tr>`).join('')
+  : '<tr><td colspan="7" style="text-align:center;color:var(--muted)">No predictions yet.</td></tr>';
+
+  // Severity pie
+  const sevCounts = { High:0, Medium:0, Low:0 };
+  data.forEach(p => { if (sevCounts[p.severity] !== undefined) sevCounts[p.severity]++; });
+  if (histSevChart) histSevChart.destroy();
+  histSevChart = new Chart(document.getElementById('hist-severity-chart'), {
+    type:'doughnut',
+    data:{
+      labels:['High','Medium','Low'],
+      datasets:[{ data:Object.values(sevCounts),
+        backgroundColor:['#FFB3C6','#FFD5B8','#B5EAD7'], borderWidth:0 }]
+    },
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'55%',
+      plugins:{ legend:{ display:false } } }
+  });
+
+  // Disease pie
+  const diseaseCounts = {};
+  data.forEach(p => {
+    diseaseCounts[p.predicted_disease] = (diseaseCounts[p.predicted_disease] || 0) + 1;
+  });
+  if (histDisChart) histDisChart.destroy();
+  histDisChart = new Chart(document.getElementById('hist-disease-chart'), {
+    type:'doughnut',
+    data:{
+      labels: Object.keys(diseaseCounts),
+      datasets:[{
+        data: Object.values(diseaseCounts),
+        backgroundColor:['#C9B8FF','#FFB3C6','#B5EAD7','#FFD5B8'],
+        borderWidth:0
+      }]
+    },
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'55%',
+      plugins:{ legend:{ display:false } } }
+  });
+}
+
+/* ── LOAD PATIENTS INTO SELECTORS ── */
+async function loadPatientSelectors() {
+  const patients = await fetch('/api/patients').then(r => r.json());
+  const opts = patients.map(p =>
+    `<option value="${p.id}">${p.name} (${p.age || '?'}y)</option>`
+  ).join('');
+  document.getElementById('pred-patient').innerHTML =
+    '<option value="">— Select patient —</option>' + opts;
+  document.getElementById('out-patient').innerHTML =
+    '<option value="">— Select patient —</option>' + opts;
+}
+
+/* ── INIT ── */
+(async () => {
+  renderForm();
+  await loadPatientSelectors();
+  loadHistory();
+
+  // Handle hash
+  if (window.location.hash === '#outcome') {
+    setTimeout(() => document.getElementById('outcome-section')?.scrollIntoView({ behavior:'smooth' }), 300);
+  }
+  if (window.location.hash === '#history') {
+    setTimeout(() => document.getElementById('history-section')?.scrollIntoView({ behavior:'smooth' }), 300);
+  }
+})();
+</script>
+</body>
+</html>

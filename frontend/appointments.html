@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>HealthAI — Appointments</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .modal-overlay{position:fixed;inset:0;background:rgba(60,40,120,.35);z-index:500;display:flex;align-items:center;justify-content:center}
+    .modal-box{background:var(--white);border-radius:20px;padding:2rem;width:100%;max-width:520px;box-shadow:0 20px 60px rgba(100,80,200,.2);max-height:90vh;overflow-y:auto}
+    .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem}
+    .modal-title{font-size:1.2rem;font-weight:800;color:var(--text)}
+    .close-btn{background:var(--pink);border:none;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:1rem;color:var(--text);font-weight:700}
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-brand"><span class="logo">🏥</span> HealthAI</div>
+  <div class="nav-links">
+    <a href="/dashboard">📊 Dashboard</a>
+    <a href="/patients">👥 Patients</a>
+    <a href="/predict">🧠 AI Tools</a>
+    <a href="/appointments" class="active">📅 Appointments</a>
+    <a href="/beds">🛏 Beds</a>
+    <a href="/staff">👔 Staff</a>
+  </div>
+  <div class="nav-right">
+    <span id="user-badge" style="background:var(--lavender);padding:6px 14px;border-radius:8px;font-size:.85rem;font-weight:600"></span>
+    <button class="btn-logout" onclick="logout()">Logout</button>
+  </div>
+</nav>
+
+<!-- Book Appointment Modal -->
+ <!-- Add this button alongside the existing Book Appointment button -->
+<button class="btn" style="padding:12px 20px;font-size:.95rem;
+        background:linear-gradient(135deg,#FFB3C6,#ff8fab);color:var(--text)"
+        onclick="window.open('/api/reports/appointments','_blank')">
+  📥 Download PDF
+</button>
+<div class="modal-overlay" id="appt-modal" style="display:none">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">📅 Book New Appointment</span>
+      <button class="close-btn" onclick="closeModal('appt-modal')">✕</button>
+    </div>
+    <div id="appt-alert"></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Patient</label>
+        <select id="m-pid"></select>
+      </div>
+      <div class="form-group">
+        <label>Doctor</label>
+        <select id="m-did" onchange="loadSlots()"></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" id="m-date">
+      </div>
+      <div class="form-group">
+        <label>Time Slot</label>
+        <select id="m-slot"></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Appointment Type</label>
+      <select id="m-type">
+        <option>Regular Checkup</option>
+        <option>Follow-up</option>
+        <option>Emergency</option>
+        <option>Lab Test</option>
+        <option>Surgery Consultation</option>
+        <option>Vaccination</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Notes / Symptoms</label>
+      <textarea id="m-notes" rows="3" placeholder="Describe symptoms or reason for visit"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:1rem">
+      <button class="btn btn-primary" style="flex:1" onclick="submitAppointment()">📅 Confirm Booking</button>
+      <button class="btn" style="flex:0;background:var(--border)" onclick="closeModal('appt-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div style="padding:2rem;max-width:1200px;margin:0 auto">
+  <!-- Hero -->
+  <div style="background:linear-gradient(135deg,#f0e8ff,#e8f8f0);border-radius:var(--radius);padding:1.8rem 2rem;margin-bottom:2rem;display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <h1 style="font-size:1.6rem;font-weight:800;color:var(--text)">📅 Appointments</h1>
+      <p style="color:var(--muted);margin-top:4px">Manage patient appointments, schedules and doctor availability</p>
+    </div>
+    <button class="btn btn-primary" style="padding:12px 24px;font-size:1rem" onclick="openModal()">＋ Book Appointment</button>
+  </div>
+
+  <!-- Stats -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:2rem" id="appt-stats"></div>
+
+  <!-- Table -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <div class="card-title" style="margin:0">☑️ All Appointments</div>
+      <input type="text" id="appt-search" placeholder="🔍 Search…" style="width:200px" oninput="filterAppts()">
+    </div>
+    <table>
+      <thead><tr><th>ID</th><th>Patient</th><th>Doctor</th><th>Date &amp; Time</th><th>Type</th><th>Notes</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="appt-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const API=''; const user=JSON.parse(localStorage.getItem('hai_user')||'{}');
+if(!user.username) window.location.href='/';
+document.getElementById('user-badge').textContent=`👤 ${user.username} (${user.role})`;
+function logout(){ localStorage.removeItem('hai_user'); window.location.href='/'; }
+function closeModal(id){ document.getElementById(id).style.display='none'; }
+
+let allAppts=[], allDoctors=[], allPatients=[];
+
+async function openModal(){
+  document.getElementById('appt-modal').style.display='flex';
+  document.getElementById('m-date').valueAsDate=new Date();
+  if(!allPatients.length) allPatients=await fetch('/api/patients').then(r=>r.json());
+  if(!allDoctors.length)  allDoctors= await fetch('/api/doctors').then(r=>r.json());
+  document.getElementById('m-pid').innerHTML=allPatients.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  document.getElementById('m-did').innerHTML=allDoctors.map(d=>`<option value="${d.id}" data-slots="${d.available_slots}">${d.name} — ${d.department}</option>`).join('');
+  loadSlots();
+}
+function loadSlots(){
+  const sel=document.getElementById('m-did');
+  const opt=sel.options[sel.selectedIndex];
+  const slots=(opt?.dataset?.slots||'9AM,11AM,2PM,4PM').split(',');
+  document.getElementById('m-slot').innerHTML=slots.map(s=>`<option>${s.trim()}</option>`).join('');
+}
+
+async function submitAppointment(){
+  const body={
+    patient_id: parseInt(document.getElementById('m-pid').value),
+    doctor_id:  parseInt(document.getElementById('m-did').value),
+    date:       document.getElementById('m-date').value,
+    slot:       document.getElementById('m-slot').value,
+    type:       document.getElementById('m-type').value,
+    notes:      document.getElementById('m-notes').value,
+  };
+  if(!body.date){ alert('Please select a date.'); return; }
+  const res=await fetch('/api/appointments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const data=await res.json();
+  if(data.success){
+    document.getElementById('appt-alert').innerHTML='<div class="alert alert-success">✅ Appointment booked successfully!</div>';
+    setTimeout(()=>{ closeModal('appt-modal'); document.getElementById('appt-alert').innerHTML=''; loadAll(); },1500);
+  } else {
+    document.getElementById('appt-alert').innerHTML=`<div class="alert alert-error">❌ ${data.message||'Error'}</div>`;
+  }
+}
+
+async function updateStatus(id,status){
+  await fetch(`/api/appointments/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+  loadAll();
+}
+
+async function loadAll(){
+  allAppts=await fetch('/api/appointments').then(r=>r.json());
+  const stats=await fetch('/api/stats').then(r=>r.json());
+  renderAppts(allAppts);
+  const sc=[
+    {val:stats.today_appts,   label:"Today's Appointments", cls:'lavender'},
+    {val:stats.confirmed_appts,label:'Confirmed',           cls:'mint'},
+    {val:stats.pending_appts,  label:'Pending Approval',    cls:'peach'},
+    {val:stats.cancelled_appts,label:'Cancelled',           cls:'pink'},
+  ];
+  document.getElementById('appt-stats').innerHTML=sc.map(s=>`
+    <div class="stat-card ${s.cls}" style="text-align:center;border-radius:var(--radius);padding:1.2rem">
+      <div class="stat-num" style="font-size:2.2rem">${s.val}</div>
+      <div class="stat-label">${s.label}</div>
+    </div>`).join('');
+}
+
+function renderAppts(list){
+  const colors={pending:'yellow',confirmed:'green',cancelled:'red',completed:'blue'};
+  document.getElementById('appt-tbody').innerHTML=list.map((a,i)=>`
+    <tr>
+      <td><b>#APT-${String(a.id).padStart(3,'0')}</b></td>
+      <td>${a.patient_name||`Patient #${a.patient_id}`}</td>
+      <td>${a.doctor_name||`Doctor #${a.doctor_id}`}</td>
+      <td>${a.appointment_date} ${a.time_slot}</td>
+      <td><span class="badge badge-purple">${a.type||'—'}</span></td>
+      <td>${a.notes||'—'}</td>
+      <td><span class="badge badge-${colors[a.status]||'blue'}">${a.status}</span></td>
+      <td style="display:flex;gap:4px;flex-wrap:wrap">
+        ${a.status==='pending'?`
+          <button class="btn btn-success" style="padding:4px 8px;font-size:.73rem"
+            onclick="updateStatus(${a.id},'confirmed')">✓</button>
+          <button class="btn btn-danger"  style="padding:4px 8px;font-size:.73rem"
+            onclick="updateStatus(${a.id},'cancelled')">✗</button>
+        `:''}
+        <button class="btn" style="padding:4px 8px;font-size:.73rem;
+          background:linear-gradient(135deg,#C9B8FF,#b0a0ff);color:var(--text)"
+          onclick="downloadApptPDF(${a.patient_id},${a.id},'${(a.patient_name||'patient').replace(/'/g,'')}')">
+          📥 PDF
+        </button>
+      </td>
+    </tr>`).join('');
+}
+function filterAppts(){
+  const q=document.getElementById('appt-search').value.toLowerCase();
+  renderAppts(allAppts.filter(a=>(a.patient_name||'').toLowerCase().includes(q)||(a.doctor_name||'').toLowerCase().includes(q)));
+}
+loadAll();
+function downloadApptPDF(pid, aid, name) {
+  const btn = event.target;
+  btn.textContent = '⏳';
+  btn.disabled = true;
+  window.open(`/api/reports/patient/${pid}/appointment/${aid}`, '_blank');
+  setTimeout(() => { btn.textContent = '📥 PDF'; btn.disabled = false; }, 2000);
+}
+</script>
+</body>
+</html>

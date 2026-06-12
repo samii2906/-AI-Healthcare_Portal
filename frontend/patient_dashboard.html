@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>HealthAI — My Health Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* Nav */
+    nav { background: linear-gradient(135deg,#FFB3C6,#C9B8FF); }
+    .nav-brand { color:#3D3066; font-weight:800; }
+    .p-nav-link {
+      padding:8px 16px; border-radius:8px; text-decoration:none;
+      color:rgba(61,48,102,.75); font-size:.9rem; font-weight:600;
+      transition:background .2s; cursor:pointer;
+    }
+    .p-nav-link:hover,.p-nav-link.active {
+      background:rgba(255,255,255,.45); color:#3D3066;
+    }
+    /* Section pages */
+    .section { display:none; }
+    .section.active { display:block; }
+    /* Welcome card */
+    .welcome-card {
+      background: linear-gradient(135deg,#ffe8f0,#f0e8ff,#e8fff0);
+      border-radius: 20px; padding: 2rem; margin-bottom: 2rem;
+      display: flex; justify-content: space-between; align-items: center;
+      flex-wrap: wrap; gap: 12px;
+    }
+    /* Doctor card */
+    .doc-card {
+      background:#fff; border-radius:14px; padding:1.2rem;
+      border:1.5px solid var(--border); display:flex;
+      align-items:center; gap:14px; margin-bottom:10px;
+      transition:box-shadow .2s; cursor:pointer;
+    }
+    .doc-card:hover { box-shadow:0 4px 20px rgba(100,80,180,.12); }
+    .doc-avatar {
+      width:50px; height:50px; border-radius:50%;
+      background:linear-gradient(135deg,#C9B8FF,#B5D5FF);
+      display:flex; align-items:center; justify-content:center;
+      font-size:1.3rem; flex-shrink:0;
+    }
+    /* Appointment card */
+    .appt-card {
+      background:#fff; border-radius:14px; padding:1.2rem;
+      border:1.5px solid var(--border); margin-bottom:10px;
+      border-left:4px solid var(--lavender);
+    }
+    /* EHR card */
+    .ehr-card {
+      background:#fff; border-radius:14px; padding:1.2rem;
+      border:1.5px solid var(--border); margin-bottom:10px;
+      border-left:4px solid var(--mint);
+    }
+    /* Prediction card */
+    .pred-card {
+      border-radius:14px; padding:1.2rem; margin-bottom:10px;
+      border:1.5px solid var(--border);
+    }
+    /* Modal */
+    .modal-overlay {
+      position:fixed;inset:0;background:rgba(60,40,120,.35);
+      z-index:500;display:flex;align-items:center;justify-content:center;
+    }
+    .modal-box {
+      background:#fff;border-radius:20px;padding:2rem;width:100%;
+      max-width:540px;box-shadow:0 20px 60px rgba(100,80,200,.2);
+      max-height:90vh;overflow-y:auto;
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-brand" style="display:flex;align-items:center;gap:10px">
+    <span style="background:rgba(255,255,255,.4);border-radius:10px;
+                 width:36px;height:36px;display:flex;align-items:center;
+                 justify-content:center;font-size:1.2rem">🧑‍⚕️</span>
+    My Health
+  </div>
+  <div style="display:flex;gap:4px;margin-left:1.5rem">
+    <a class="p-nav-link active" id="nav-home"
+       onclick="showSection('home')">🏠 Dashboard</a>
+    <a class="p-nav-link" id="nav-appointments"
+       onclick="showSection('appointments')">📅 Appointments</a>
+    <a class="p-nav-link" id="nav-ehr"
+       onclick="showSection('ehr')">📋 Health Records</a>
+    <a class="p-nav-link" id="nav-predictions"
+       onclick="showSection('predictions')">🧠 AI Reports</a>
+    <a class="p-nav-link" id="nav-doctors"
+       onclick="showSection('doctors')">👨‍⚕️ My Doctors</a>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+    <span id="user-badge"
+      style="background:rgba(255,255,255,.4);padding:6px 14px;
+             border-radius:8px;font-size:.85rem;font-weight:700;color:#3D3066">
+    </span>
+    <button style="background:rgba(255,255,255,.4);border:none;padding:8px 16px;
+                   border-radius:8px;font-size:.85rem;font-weight:700;
+                   cursor:pointer;color:#3D3066"
+            onclick="logout()">Logout</button>
+  </div>
+</nav>
+
+<!-- BOOK APPOINTMENT MODAL -->
+<div class="modal-overlay" id="book-modal" style="display:none">
+  <div class="modal-box">
+    <div style="display:flex;justify-content:space-between;
+                align-items:center;margin-bottom:1.5rem">
+      <span style="font-size:1.1rem;font-weight:800;color:var(--text)">
+        📅 Book an Appointment
+      </span>
+      <button onclick="closeModal()"
+        style="background:var(--pink);border:none;width:32px;height:32px;
+               border-radius:50%;cursor:pointer;font-size:1rem;font-weight:700">
+        ✕
+      </button>
+    </div>
+    <div id="book-alert"></div>
+
+    <div class="form-group">
+      <label>Select Doctor</label>
+      <select id="b-doc" onchange="loadDocSlots()"></select>
+    </div>
+    <!-- Selected doctor info -->
+    <div id="selected-doc-info"
+         style="display:none;background:#f0f8ff;border-radius:10px;
+                padding:12px;margin-bottom:1rem;font-size:.85rem">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Date *</label>
+        <input type="date" id="b-date">
+      </div>
+      <div class="form-group">
+        <label>Time Slot</label>
+        <select id="b-slot"></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Appointment Type</label>
+      <select id="b-type">
+        <option>Regular Checkup</option>
+        <option>Follow-up</option>
+        <option>Emergency</option>
+        <option>Lab Test</option>
+        <option>Consultation</option>
+        <option>Vaccination</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Describe your symptoms / reason</label>
+      <textarea id="b-notes" rows="3"
+                placeholder="e.g. Chest pain since 2 days, fever, fatigue...">
+      </textarea>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:1rem">
+      <button class="btn btn-primary" style="flex:1"
+              onclick="submitBooking()">
+        ✅ Confirm Booking
+      </button>
+      <button class="btn" style="background:var(--border)"
+              onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE CONTENT -->
+<div style="padding:2rem;max-width:1200px;margin:0 auto">
+
+  <!-- ══ HOME SECTION ══════════════════════════════════════════════════════ -->
+  <div class="section active" id="section-home">
+
+    <div class="welcome-card">
+      <div>
+        <h1 style="font-size:1.6rem;font-weight:800;color:var(--text)"
+            id="welcome-name">
+          👋 Welcome back!
+        </h1>
+        <p style="color:var(--muted);margin-top:4px" id="welcome-sub">
+          Loading your health summary…
+        </p>
+      </div>
+      <button class="btn btn-primary"
+              style="padding:12px 24px;font-size:1rem;
+                     background:linear-gradient(135deg,#FFB3C6,#C9B8FF)"
+              onclick="document.getElementById('book-modal').style.display='flex';
+                       loadDoctors()">
+        📅 Book Appointment
+      </button>
+    </div>
+
+    <!-- Stats -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);
+                gap:1rem;margin-bottom:2rem"
+         id="pat-stats">
+    </div>
+
+    <!-- Profile + chart row -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;
+                gap:1.5rem;margin-bottom:2rem">
+      <!-- My profile card -->
+      <div class="card">
+        <div class="card-title">👤 My Profile</div>
+        <div id="profile-card">
+          <div style="text-align:center;color:var(--muted)">Loading…</div>
+        </div>
+      </div>
+      <!-- Appointment status chart -->
+      <div class="card">
+        <div class="card-title">📊 My Appointment Status</div>
+        <div style="height:200px"><canvas id="appt-chart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Recent activity -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;
+                    align-items:center;margin-bottom:1rem">
+          <div class="card-title" style="margin:0">📅 Recent Appointments</div>
+          <a onclick="showSection('appointments')"
+             style="font-size:.82rem;color:#7C6FD4;cursor:pointer;font-weight:600">
+            View all →
+          </a>
+        </div>
+        <div id="recent-appts">Loading…</div>
+      </div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;
+                    align-items:center;margin-bottom:1rem">
+          <div class="card-title" style="margin:0">🧠 Recent AI Reports</div>
+          <a onclick="showSection('predictions')"
+             style="font-size:.82rem;color:#7C6FD4;cursor:pointer;font-weight:600">
+            View all →
+          </a>
+        </div>
+        <div id="recent-preds">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ APPOINTMENTS SECTION ═══════════════════════════════════════════════ -->
+  <div class="section" id="section-appointments">
+    <div style="display:flex;justify-content:space-between;
+                align-items:center;margin-bottom:1.5rem">
+      <div>
+        <h2 style="font-size:1.4rem;font-weight:800;color:var(--text)">
+          📅 My Appointments
+        </h2>
+        <p style="color:var(--muted);font-size:.88rem">
+          All your scheduled visits with doctors
+        </p>
+      </div>
+      <button class="btn btn-primary"
+              onclick="document.getElementById('book-modal').style.display='flex';
+                       loadDoctors()">
+        ➕ Book New
+      </button>
+    </div>
+
+    <!-- Filter tabs -->
+    <div style="display:flex;gap:8px;margin-bottom:1.5rem;flex-wrap:wrap">
+      <button class="tab-pill active" onclick="filterAppts('all',this)">
+        All
+      </button>
+      <button class="tab-pill" onclick="filterAppts('pending',this)">
+        ⏳ Pending
+      </button>
+      <button class="tab-pill" onclick="filterAppts('confirmed',this)">
+        ✅ Confirmed
+      </button>
+      <button class="tab-pill" onclick="filterAppts('completed',this)">
+        🏁 Completed
+      </button>
+    </div>
+
+    <div id="appts-list">Loading…</div>
+  </div>
+
+  <!-- ══ EHR SECTION ════════════════════════════════════════════════════════ -->
+  <div class="section" id="section-ehr">
+    <div style="display:flex;justify-content:space-between;
+                align-items:center;margin-bottom:1.5rem">
+      <div>
+        <h2 style="font-size:1.4rem;font-weight:800;color:var(--text)">
+          📋 My Health Records
+        </h2>
+        <p style="color:var(--muted);font-size:.88rem">
+          Your diagnoses, prescriptions and treatment history
+        </p>
+      </div>
+      <button class="btn"
+              style="background:linear-gradient(135deg,#C9B8FF,#b0a0ff);
+                     color:var(--text)"
+              onclick="window.open('/api/reports/patient/'+myPID+'/ehr','_blank')">
+        📥 Download All PDF
+      </button>
+    </div>
+    <div id="ehr-list">Loading…</div>
+  </div>
+
+  <!-- ══ PREDICTIONS SECTION ════════════════════════════════════════════════ -->
+  <div class="section" id="section-predictions">
+    <div style="display:flex;justify-content:space-between;
+                align-items:center;margin-bottom:1.5rem">
+      <div>
+        <h2 style="font-size:1.4rem;font-weight:800;color:var(--text)">
+          🧠 My AI Health Reports
+        </h2>
+        <p style="color:var(--muted);font-size:.88rem">
+          AI-powered disease risk analysis results
+        </p>
+      </div>
+      <button class="btn"
+              style="background:linear-gradient(135deg,#B5EAD7,#96d9be);
+                     color:var(--text)"
+              onclick="window.open('/api/reports/patient/'+myPID+'/predictions','_blank')">
+        📥 Download PDF
+      </button>
+    </div>
+
+    <!-- Prediction summary charts -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;
+                gap:1.5rem;margin-bottom:2rem"
+         id="pred-charts-wrap" style="display:none">
+      <div class="card">
+        <div class="card-title">Risk Distribution</div>
+        <div style="height:200px"><canvas id="pred-sev-chart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Disease Breakdown</div>
+        <div style="height:200px"><canvas id="pred-dis-chart"></canvas></div>
+      </div>
+    </div>
+
+    <div id="preds-list">Loading…</div>
+  </div>
+
+  <!-- ══ DOCTORS SECTION ════════════════════════════════════════════════════ -->
+  <div class="section" id="section-doctors">
+    <div style="margin-bottom:1.5rem">
+      <h2 style="font-size:1.4rem;font-weight:800;color:var(--text)">
+        👨‍⚕️ My Doctors
+      </h2>
+      <p style="color:var(--muted);font-size:.88rem">
+        Doctors you have appointments with
+      </p>
+    </div>
+    <div id="doctors-list">Loading…</div>
+  </div>
+
+</div><!-- /page -->
+
+<script>
+/* ── Auth check ── */
+const user = JSON.parse(localStorage.getItem('hai_user') || '{}');
+if (!user.username || user.role !== 'patient') {
+  window.location.href = '/patient-login';
+}
+document.getElementById('user-badge').textContent =
+  `👤 ${user.name || user.username}`;
+function logout() {
+  localStorage.removeItem('hai_user');
+  window.location.href = '/patient-login';
+}
+
+/* ── State ── */
+let myPID       = null;
+let allAppts    = [];
+let allDoctors  = [];
+let allEHR      = [];
+let allPreds    = [];
+let sevChart    = null;
+let disChart    = null;
+let apptChart   = null;
+
+const statusColors = {
+  pending:'#FFF0A0',confirmed:'#B5EAD7',
+  cancelled:'#FFB3C6',completed:'#B5D5FF'
+};
+const statusText = {
+  pending:'⏳ Pending',confirmed:'✅ Confirmed',
+  cancelled:'❌ Cancelled',completed:'🏁 Completed'
+};
+const sevColor = {
+  High:'#FFB3C6',Medium:'#FFD5B8',Low:'#B5EAD7'
+};
+const sevTextColor = {
+  High:'#9d0028',Medium:'#7a5c00',Low:'#2d6a4f'
+};
+
+/* ── Section navigation ── */
+function showSection(name) {
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.p-nav-link').forEach(l=>l.classList.remove('active'));
+  document.getElementById(`section-${name}`).classList.add('active');
+  document.getElementById(`nav-${name}`)?.classList.add('active');
+}
+
+/* ── Modal ── */
+function closeModal() {
+  document.getElementById('book-modal').style.display = 'none';
+  document.getElementById('book-alert').innerHTML     = '';
+}
+
+/* ── Load patient profile ── */
+async function loadProfile() {
+  const data = await fetch(`/api/my/profile/${user.user_id}`).then(r=>r.json());
+  if (!data.id) return;
+  myPID = data.id;
+
+  document.getElementById('welcome-name').textContent =
+    `👋 Welcome, ${data.name}!`;
+  document.getElementById('welcome-sub').textContent =
+    `Blood Group: ${data.blood_group||'—'} | Age: ${data.age||'—'} | `+
+    `${data.medical_conditions ? 'Conditions: '+data.medical_conditions : 'No known conditions'}`;
+
+  document.getElementById('profile-card').innerHTML = `
+    <div style="display:flex;align-items:center;gap:14px;
+                margin-bottom:1rem;background:#faf8ff;
+                border-radius:12px;padding:14px">
+      <div style="width:54px;height:54px;border-radius:50%;
+                  background:linear-gradient(135deg,#FFB3C6,#C9B8FF);
+                  display:flex;align-items:center;justify-content:center;
+                  font-size:1.5rem;font-weight:800;color:#3D3066">
+        ${(data.name||'?')[0].toUpperCase()}
+      </div>
+      <div>
+        <div style="font-weight:800;font-size:1rem;color:var(--text)">
+          ${data.name}
+        </div>
+        <div style="font-size:.78rem;color:var(--muted)">
+          Patient ID: P-${String(data.id).padStart(4,'0')}
+        </div>
+      </div>
+      <span class="badge badge-purple" style="margin-left:auto">
+        ${data.blood_group||'—'}
+      </span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${profileRow('Age',data.age+' years')}
+      ${profileRow('Gender',data.gender)}
+      ${profileRow('Phone',data.phone||'—')}
+      ${profileRow('Email',data.email||'—')}
+      ${profileRow('Allergies',data.allergies||'None')}
+      ${profileRow('Insurance',data.insurance||'—')}
+    </div>
+    ${data.medical_conditions ? `
+      <div style="margin-top:10px;background:#fff0f6;border-radius:10px;
+                  padding:10px;font-size:.85rem;border-left:3px solid #FFB3C6">
+        <b>⚕️ Medical Conditions:</b> ${data.medical_conditions}
+      </div>` : ''}
+    ${data.family_history ? `
+      <div style="margin-top:8px;background:#f0f8ff;border-radius:10px;
+                  padding:10px;font-size:.85rem;border-left:3px solid #B5D5FF">
+        <b>👨‍👩‍👧 Family History:</b> ${data.family_history}
+      </div>` : ''}
+  `;
+  return data;
+}
+
+function profileRow(label, val) {
+  return `<div style="background:#faf8ff;border-radius:8px;padding:8px 10px">
+    <div style="font-size:.72rem;font-weight:700;color:var(--muted);
+                text-transform:uppercase;letter-spacing:.3px">${label}</div>
+    <div style="font-size:.88rem;color:var(--text);font-weight:600;
+                margin-top:2px">${val||'—'}</div>
+  </div>`;
+}
+
+/* ── Load appointments ── */
+async function loadAppointments() {
+  if (!myPID) return;
+  allAppts = await fetch(`/api/my/appointments/${myPID}`).then(r=>r.json());
+
+  // Stats
+  const total     = allAppts.length;
+  const confirmed = allAppts.filter(a=>a.status==='confirmed').length;
+  const pending   = allAppts.filter(a=>a.status==='pending').length;
+  const completed = allAppts.filter(a=>a.status==='completed').length;
+
+  document.getElementById('pat-stats').innerHTML = [
+    {icon:'📅',label:'Total Appointments', val:total,     cls:'lavender'},
+    {icon:'✅',label:'Confirmed',          val:confirmed, cls:'mint'},
+    {icon:'⏳',label:'Pending',            val:pending,   cls:'peach'},
+    {icon:'🏁',label:'Completed',          val:completed, cls:'sky'},
+  ].map(c=>`
+    <div class="stat-card ${c.cls}"
+         style="border-radius:var(--radius);padding:1.2rem;text-align:center">
+      <div style="font-size:1.8rem">${c.icon}</div>
+      <div class="stat-num" style="font-size:1.8rem">${c.val}</div>
+      <div class="stat-label">${c.label}</div>
+    </div>`).join('');
+
+  // Appointment status chart
+  if (apptChart) apptChart.destroy();
+  apptChart = new Chart(document.getElementById('appt-chart'),{
+    type:'doughnut',
+    data:{
+      labels:['Confirmed','Pending','Completed','Cancelled'],
+      datasets:[{
+        data:[
+          confirmed, pending, completed,
+          allAppts.filter(a=>a.status==='cancelled').length
+        ],
+        backgroundColor:['#B5EAD7','#FFF0A0','#B5D5FF','#FFB3C6'],
+        borderWidth:0
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,cutout:'62%',
+      plugins:{legend:{position:'bottom',labels:{font:{size:10}}}}
+    }
+  });
+
+  // Recent (home page)
+  document.getElementById('recent-appts').innerHTML =
+    allAppts.slice(0,3).map(a=>miniApptCard(a)).join('') ||
+    '<div style="color:var(--muted);font-size:.85rem">No appointments yet.</div>';
+
+  // Full list
+  renderAppts(allAppts);
+}
+
+function miniApptCard(a) {
+  const bg = statusColors[a.status] || '#f0ebff';
+  return `
+  <div style="background:${bg};border-radius:10px;padding:10px 12px;
+              margin-bottom:8px;font-size:.83rem">
+    <div style="font-weight:700">
+      👨‍⚕️ ${a.doctor_name||'—'}
+      <span style="float:right;font-size:.75rem;color:var(--muted)">
+        ${a.appointment_date||'—'}
+      </span>
+    </div>
+    <div style="color:var(--muted);margin-top:2px">
+      ${a.department||'—'} | ${a.time_slot||'—'} | ${a.type||'—'}
+    </div>
+  </div>`;
+}
+
+let apptFilter = 'all';
+function filterAppts(status, el) {
+  apptFilter = status;
+  document.querySelectorAll('.tab-pill').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  const list = status==='all'
+    ? allAppts
+    : allAppts.filter(a=>a.status===status);
+  renderAppts(list);
+}
+
+function renderAppts(list) {
+  document.getElementById('appts-list').innerHTML = list.length
+    ? list.map(a=>`
+      <div class="appt-card">
+        <div style="display:flex;justify-content:space-between;
+                    align-items:flex-start;flex-wrap:wrap;gap:8px">
+          <!-- Doctor info -->
+          <div style="display:flex;align-items:center;gap:12px">
+            <div class="doc-avatar" style="width:44px;height:44px">👨‍⚕️</div>
+            <div>
+              <div style="font-weight:800;font-size:.95rem;color:var(--text)">
+                ${a.doctor_name||'—'}
+              </div>
+              <div style="font-size:.78rem;color:var(--muted)">
+                ${a.department||'—'} | ${a.specialization||'—'}
+              </div>
+            </div>
+          </div>
+          <!-- Status badge -->
+          <span style="background:${statusColors[a.status]||'#f0ebff'};
+                       padding:4px 14px;border-radius:20px;
+                       font-size:.78rem;font-weight:700">
+            ${statusText[a.status]||a.status}
+          </span>
+        </div>
+        <!-- Details row -->
+        <div style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap">
+          <span style="font-size:.82rem;background:#f8f5ff;
+                       padding:4px 10px;border-radius:8px">
+            📅 ${a.appointment_date||'—'}
+          </span>
+          <span style="font-size:.82rem;background:#f8f5ff;
+                       padding:4px 10px;border-radius:8px">
+            🕐 ${a.time_slot||'—'}
+          </span>
+          <span style="font-size:.82rem;background:#f8f5ff;
+                       padding:4px 10px;border-radius:8px">
+            🏷️ ${a.type||'—'}
+          </span>
+        </div>
+        ${a.notes ? `
+          <div style="margin-top:8px;font-size:.82rem;color:var(--muted);
+                      background:#faf8ff;padding:8px 10px;border-radius:8px">
+            📝 ${a.notes}
+          </div>` : ''}
+        <!-- Download button -->
+        <div style="margin-top:10px;display:flex;gap:8px">
+          <button class="btn"
+                  style="padding:5px 12px;font-size:.75rem;
+                         background:linear-gradient(135deg,#C9B8FF,#b0a0ff);
+                         color:var(--text)"
+                  onclick="window.open('/api/reports/patient/${myPID}/appointment/${a.id}','_blank')">
+            📥 Download Report
+          </button>
+        </div>
+      </div>`).join('')
+    : `<div style="text-align:center;padding:3rem;color:var(--muted)">
+         <div style="font-size:3rem;margin-bottom:12px">📅</div>
+         <div>No appointments found.</div>
+         <button class="btn btn-primary" style="margin-top:1rem"
+           onclick="document.getElementById('book-modal').style.display='flex';
+                    loadDoctors()">
+           ➕ Book Your First Appointment
+         </button>
+       </div>`;
+}
+
+/* ── Load EHR ── */
+async function loadEHR() {
+  if (!myPID) return;
+  allEHR = await fetch(`/api/my/ehr/${myPID}`).then(r=>r.json());
+
+  document.getElementById('ehr-list').innerHTML = allEHR.length
+    ? allEHR.map(r=>`
+      <div class="ehr-card">
+        <div style="display:flex;justify-content:space-between;
+                    align-items:center;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-weight:800;font-size:.95rem;color:var(--text)">
+              🔍 ${r.diagnosis||'No diagnosis'}
+            </div>
+            <div style="font-size:.78rem;color:var(--muted);margin-top:2px">
+              👨‍⚕️ ${r.doctor_name||'—'} | ${r.department||'—'} |
+              📅 ${r.visit_date||'—'}
+            </div>
+          </div>
+          <span style="background:var(--mint);padding:3px 10px;
+                       border-radius:20px;font-size:.75rem;font-weight:700;
+                       color:#2d6a4f">
+            EHR-${String(r.id).padStart(4,'0')}
+          </span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;
+                    gap:8px;margin-top:12px">
+          ${ehrBlock('💊 Prescription',r.prescription,'#F0FFF4','#4CAF8A')}
+          ${ehrBlock('🔬 Lab Reports',r.lab_reports,'#FFFBF0','#E8965A')}
+        </div>
+        ${r.treatment_history ? `
+          <div style="margin-top:8px">
+            ${ehrBlock('🏥 Treatment Plan',r.treatment_history,'#F0F8FF','#5B9BD5')}
+          </div>` : ''}
+        <div style="margin-top:10px">
+          <button class="btn"
+                  style="padding:5px 12px;font-size:.75rem;
+                         background:linear-gradient(135deg,#C9B8FF,#b0a0ff);
+                         color:var(--text)"
+                  onclick="window.open('/api/reports/ehr/${r.id}','_blank')">
+            📥 Download EHR PDF
+          </button>
+        </div>
+      </div>`).join('')
+    : `<div style="text-align:center;padding:3rem;color:var(--muted)">
+         <div style="font-size:3rem;margin-bottom:12px">📋</div>
+         <div>No health records found yet.</div>
+         <div style="font-size:.85rem;margin-top:8px">
+           Your doctor will add records after your visit.
+         </div>
+       </div>`;
+}
+
+function ehrBlock(label, content, bg, accent) {
+  if (!content || !content.trim()) return '';
+  return `
+    <div style="background:${bg};border-radius:8px;padding:10px;
+                border-left:3px solid ${accent}">
+      <div style="font-size:.72rem;font-weight:700;color:${accent};
+                  margin-bottom:4px;text-transform:uppercase">${label}</div>
+      <div style="font-size:.83rem;color:var(--text);line-height:1.6">
+        ${content.replace(/\n/g,'<br>')}
+      </div>
+    </div>`;
+}
+
+/* ── Load predictions ── */
+async function loadPredictions() {
+  if (!myPID) return;
+  allPreds = await fetch(`/api/my/predictions/${myPID}`).then(r=>r.json());
+
+  // Recent for home
+  document.getElementById('recent-preds').innerHTML =
+    allPreds.slice(0,3).map(p=>`
+      <div style="background:${sevColor[p.severity]||'#f0ebff'};
+                  border-radius:10px;padding:10px 12px;margin-bottom:8px">
+        <div style="font-weight:700;font-size:.83rem">
+          ${p.predicted_disease}
+          <span style="float:right;font-weight:800;
+                       color:${sevTextColor[p.severity]||'#555'}">
+            ${p.risk_score}%
+          </span>
+        </div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
+          ${p.severity} Risk | ${(p.created_at||'—').slice(0,10)}
+        </div>
+      </div>`).join('') ||
+    '<div style="color:var(--muted);font-size:.85rem">No AI reports yet.</div>';
+
+  if (!allPreds.length) {
+    document.getElementById('preds-list').innerHTML =
+      `<div style="text-align:center;padding:3rem;color:var(--muted)">
+         <div style="font-size:3rem;margin-bottom:12px">🧠</div>
+         <div>No AI prediction reports yet.</div>
+         <div style="font-size:.85rem;margin-top:8px">
+           Your doctor will run AI analysis during your visit.
+         </div>
+       </div>`;
+    return;
+  }
+
+  // Charts
+  document.getElementById('pred-charts-wrap').style.display = 'grid';
+  const sevCounts = {High:0,Medium:0,Low:0};
+  const disCounts = {};
+  allPreds.forEach(p=>{
+    if(sevCounts[p.severity]!==undefined) sevCounts[p.severity]++;
+    disCounts[p.predicted_disease]=(disCounts[p.predicted_disease]||0)+1;
+  });
+
+  if(sevChart) sevChart.destroy();
+  sevChart = new Chart(document.getElementById('pred-sev-chart'),{
+    type:'doughnut',
+    data:{
+      labels:['High','Medium','Low'],
+      datasets:[{
+        data:Object.values(sevCounts),
+        backgroundColor:['#FFB3C6','#FFD5B8','#B5EAD7'],
+        borderWidth:0
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,cutout:'60%',
+      plugins:{legend:{position:'bottom',labels:{font:{size:10}}}}
+    }
+  });
+
+  if(disChart) disChart.destroy();
+  disChart = new Chart(document.getElementById('pred-dis-chart'),{
+    type:'doughnut',
+    data:{
+      labels:Object.keys(disCounts),
+      datasets:[{
+        data:Object.values(disCounts),
+        backgroundColor:['#C9B8FF','#FFB3C6','#B5EAD7','#FFD5B8'],
+        borderWidth:0
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,cutout:'60%',
+      plugins:{legend:{position:'bottom',labels:{font:{size:10}}}}
+    }
+  });
+
+  // List
+  document.getElementById('preds-list').innerHTML = allPreds.map(p=>`
+    <div class="pred-card"
+         style="border-left:4px solid ${sevColor[p.severity]||'#C9B8FF'}">
+      <div style="display:flex;justify-content:space-between;
+                  align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-weight:800;font-size:.95rem;color:var(--text)">
+            ${p.predicted_disease}
+          </div>
+          <div style="font-size:.78rem;color:var(--muted);margin-top:2px">
+            📅 ${(p.created_at||'—').slice(0,10)}
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:1.8rem;font-weight:900;
+                      color:${sevTextColor[p.severity]||'#555'}">
+            ${p.risk_score}%
+          </div>
+          <span style="background:${sevColor[p.severity]||'#f0ebff'};
+                       padding:3px 12px;border-radius:20px;
+                       font-size:.75rem;font-weight:700;
+                       color:${sevTextColor[p.severity]||'#555'}">
+            ${p.severity} Risk
+          </span>
+        </div>
+      </div>
+      <!-- Risk bar -->
+      <div style="margin:10px 0">
+        <div style="background:var(--border);border-radius:20px;
+                    height:8px;overflow:hidden">
+          <div style="height:100%;border-radius:20px;
+                      width:${p.risk_score}%;
+                      background:${sevColor[p.severity]||'#C9B8FF'};
+                      transition:width .5s">
+          </div>
+        </div>
+      </div>
+      <button class="btn"
+              style="padding:5px 12px;font-size:.75rem;
+                     background:linear-gradient(135deg,#B5EAD7,#96d9be);
+                     color:var(--text)"
+              onclick="window.open('/api/reports/patient/${myPID}/predictions','_blank')">
+        📥 Download AI Report PDF
+      </button>
+    </div>`).join('');
+}
+
+/* ── Load doctors I've visited ── */
+async function loadMyDoctors() {
+  if (!myPID) return;
+  // Get unique doctors from my appointments
+  const uniqueDocs = {};
+  allAppts.forEach(a=>{
+    if(a.doctor_id && !uniqueDocs[a.doctor_id]) {
+      uniqueDocs[a.doctor_id] = a;
+    }
+  });
+  const docs = Object.values(uniqueDocs);
+
+  document.getElementById('doctors-list').innerHTML = docs.length
+    ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem">
+        ${docs.map(d=>`
+          <div class="doc-card">
+            <div class="doc-avatar">👨‍⚕️</div>
+            <div style="flex:1">
+              <div style="font-weight:800;font-size:.95rem;color:var(--text)">
+                ${d.doctor_name||'—'}
+              </div>
+              <div style="font-size:.78rem;color:var(--muted);margin-top:2px">
+                ${d.department||'—'} | ${d.specialization||'—'}
+              </div>
+              ${d.doctor_phone ? `
+                <div style="font-size:.78rem;color:var(--muted);margin-top:2px">
+                  📞 ${d.doctor_phone}
+                </div>` : ''}
+              ${d.qualification ? `
+                <div style="font-size:.75rem;margin-top:4px">
+                  <span style="background:var(--lavender);padding:2px 8px;
+                               border-radius:10px;font-size:.72rem;font-weight:600">
+                    ${d.qualification}
+                  </span>
+                </div>` : ''}
+            </div>
+            <button class="btn btn-primary"
+                    style="padding:6px 14px;font-size:.75rem"
+                    onclick="document.getElementById('book-modal').style.display='flex';
+                             loadDoctors(${d.doctor_id})">
+              📅 Book
+            </button>
+          </div>`).join('')}
+      </div>`
+    : `<div style="text-align:center;padding:3rem;color:var(--muted)">
+         <div style="font-size:3rem;margin-bottom:12px">👨‍⚕️</div>
+         <div>No doctors yet. Book your first appointment!</div>
+         <button class="btn btn-primary" style="margin-top:1rem"
+           onclick="document.getElementById('book-modal').style.display='flex';
+                    loadDoctors()">
+           📅 Book Appointment
+         </button>
+       </div>`;
+}
+
+/* ── Book appointment ── */
+async function loadDoctors(preselect) {
+  if (!allDoctors.length)
+    allDoctors = await fetch('/api/doctors').then(r=>r.json());
+
+  document.getElementById('b-doc').innerHTML =
+    '<option value="">— Choose a doctor —</option>' +
+    allDoctors.map(d=>
+      `<option value="${d.id}" data-slots="${d.available_slots||'9AM,11AM,2PM,4PM'}"
+               data-dept="${d.department}" data-spec="${d.specialization}"
+               data-qual="${d.qualification}" data-phone="${d.phone||''}"
+               ${preselect && d.id===preselect ? 'selected' : ''}>
+        ${d.name} — ${d.department}
+       </option>`
+    ).join('');
+
+  document.getElementById('b-date').valueAsDate = new Date();
+  if (preselect) loadDocSlots();
+}
+
+function loadDocSlots() {
+  const sel = document.getElementById('b-doc');
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt || !opt.value) {
+    document.getElementById('selected-doc-info').style.display = 'none';
+    return;
+  }
+  const slots = (opt.dataset.slots || '9AM,11AM,2PM,4PM').split(',');
+  document.getElementById('b-slot').innerHTML =
+    slots.map(s=>`<option>${s.trim()}</option>`).join('');
+
+  // Show doctor info
+  document.getElementById('selected-doc-info').style.display = 'block';
+  document.getElementById('selected-doc-info').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="font-size:1.8rem">👨‍⚕️</div>
+      <div>
+        <div style="font-weight:700;color:var(--text)">${opt.text.split('—')[0].trim()}</div>
+        <div style="font-size:.78rem;color:var(--muted)">
+          ${opt.dataset.dept||'—'} | ${opt.dataset.spec||'—'}
+          ${opt.dataset.qual ? ' | '+opt.dataset.qual : ''}
+        </div>
+        ${opt.dataset.phone ?
+          `<div style="font-size:.78rem;color:var(--muted)">📞 ${opt.dataset.phone}</div>`
+          : ''}
+      </div>
+    </div>`;
+}
+
+async function submitBooking() {
+  const did  = document.getElementById('b-doc').value;
+  const date = document.getElementById('b-date').value;
+  if (!did || !date) {
+    document.getElementById('book-alert').innerHTML =
+      '<div class="alert alert-error">Please select a doctor and date.</div>';
+    return;
+  }
+  const body = {
+    patient_id: myPID,
+    doctor_id:  parseInt(did),
+    date,
+    slot:  document.getElementById('b-slot').value,
+    type:  document.getElementById('b-type').value,
+    notes: document.getElementById('b-notes').value,
+  };
+  const res  = await fetch('/api/my/book-appointment',{
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (data.success) {
+    document.getElementById('book-alert').innerHTML =
+      '<div class="alert alert-success">✅ Appointment booked! Awaiting confirmation.</div>';
+    setTimeout(()=>{ closeModal(); loadAppointments(); }, 1500);
+  } else {
+    document.getElementById('book-alert').innerHTML =
+      `<div class="alert alert-error">❌ ${data.message||'Error'}</div>`;
+  }
+}
+
+/* ── INIT ── */
+(async()=>{
+  const profile = await loadProfile();
+  if (!profile) { window.location.href='/patient-login'; return; }
+  await loadAppointments();
+  await loadEHR();
+  await loadPredictions();
+  await loadMyDoctors();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediCare AI — Login</title>
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-card">
+    <div style="margin-top:1rem;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+  <a href="/patient-login"
+     style="padding:8px 16px;border-radius:10px;background:#ffe8f0;
+            color:#E8698A;font-size:.82rem;font-weight:700;text-decoration:none">
+    🧑‍⚕️ Patient Portal
+  </a>
+  <a href="/doctor-login"
+     style="padding:8px 16px;border-radius:10px;background:#e8f4ff;
+            color:#5B9BD5;font-size:.82rem;font-weight:700;text-decoration:none">
+    👨‍⚕️ Doctor Portal
+  </a>
+  <a href="/admin-login"
+     style="padding:8px 16px;border-radius:10px;background:#f0ebff;
+            color:#7C6FD4;font-size:.82rem;font-weight:700;text-decoration:none">
+    🛡️ Admin Portal
+  </a>
+</div>
+    <div class="login-logo">🏥</div>
+    <div class="login-title">MediCare AI</div>
+    <div class="login-sub">AI-Powered Healthcare System</div>
+
+    <div class="tab-row">
+      <button class="tab-btn active" onclick="setTab('login')">Login</button>
+      <button class="tab-btn" onclick="setTab('register')">Register</button>
+    </div>
+
+    <div id="tab-login">
+      <div id="login-alert"></div>
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="l-user" placeholder="Enter username">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="l-pass" placeholder="Enter password">
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+      <div style="margin-top:1rem;background:#f0ebff;border-radius:10px;padding:12px;font-size:0.8rem;color:var(--muted)">
+        <b>Demo accounts:</b><br>
+        Admin: admin / admin123<br>
+        Doctor: doctor1 / doc123<br>
+        Patient: patient1 / pat123
+      </div>
+    </div>
+    <div style="margin-top:1rem;text-align:center;padding:12px;
+            background:#e8f4ff;border-radius:10px;font-size:.85rem">
+      👨‍⚕️ Are you a doctor?
+      <a href="/doctor-login"
+        style="color:#5B9BD5;font-weight:700;margin-left:6px">
+        Doctor Login / Register →
+      </a>
+    </div>
+
+    <div id="tab-register" style="display:none">
+      <div id="reg-alert"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="r-name" placeholder="Your name">
+        </div>
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="r-user" placeholder="Choose username">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="r-email" placeholder="your@email.com">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="r-pass" placeholder="Choose password">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Role</label>
+          <select id="r-role">
+            <option value="patient">Patient</option>
+            <option value="doctor">Doctor</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Age</label>
+          <input type="number" id="r-age" placeholder="Age">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Gender</label>
+          <select id="r-gender">
+            <option>Male</option><option>Female</option><option>Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Blood Group</label>
+          <select id="r-blood">
+            <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+            <option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-success" style="width:100%" onclick="doRegister()">Create Account</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';   // same origin — Flask serves frontend
+
+function setTab(t) {
+  document.getElementById('tab-login').style.display    = t==='login'    ? '' : 'none';
+  document.getElementById('tab-register').style.display = t==='register' ? '' : 'none';
+  document.querySelectorAll('.tab-btn').forEach((b,i)=> b.classList.toggle('active', (i===0&&t==='login')||(i===1&&t==='register')));
+}
+
+ async function doLogin() {
+  const username = document.getElementById('l-user').value.trim();
+  const password = document.getElementById('l-pass').value;
+  if (!username || !password) {
+    document.getElementById('login-alert').innerHTML =
+      '<div class="alert alert-error">Please enter username and password.</div>';
+    return;
+  }
+  const res  = await fetch('/api/login', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    credentials:'include',
+    body: JSON.stringify({username, password})
+  });
+  const data = await res.json();
+  if (data.success) {
+    localStorage.setItem('hai_user', JSON.stringify(data));
+    // Route to correct dashboard based on role
+    if (data.role === 'admin')        window.location.href = '/admin-dashboard';
+    else if (data.role === 'doctor')  window.location.href = '/doctor-dashboard';
+    else                              window.location.href = '/patient-dashboard';
+  } else {
+    document.getElementById('login-alert').innerHTML =
+      `<div class="alert alert-error">❌ ${data.message || 'Invalid credentials'}</div>`;
+  }
+}
+async function doRegister() {
+  const body = {
+    username: document.getElementById('r-user').value,
+    password: document.getElementById('r-pass').value,
+    email:    document.getElementById('r-email').value,
+    name:     document.getElementById('r-name').value,
+    role:     document.getElementById('r-role').value,
+    age:      document.getElementById('r-age').value,
+    gender:   document.getElementById('r-gender').value,
+    blood_group: document.getElementById('r-blood').value,
+  };
+  if(!body.username||!body.password||!body.name){ alert('Name, username and password are required.'); return; }
+  const res  = await fetch('/api/register', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify(body)});
+  const data = await res.json();
+  if (data.success) {
+    document.getElementById('reg-alert').innerHTML = `<div class="alert alert-success">✅ Account created! Please login.</div>`;
+    setTimeout(()=> setTab('login'), 1500);
+  } else {
+    document.getElementById('reg-alert').innerHTML = `<div class="alert alert-error">❌ ${data.message}</div>`;
+  }
+}
+</script>
+
+</body>
+</html>

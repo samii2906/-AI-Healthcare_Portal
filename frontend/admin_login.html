@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>HealthAI — Admin Login</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    body {
+      min-height:100vh;
+      background:linear-gradient(135deg,#1a1040 0%,#2d1b69 50%,#1a2d40 100%);
+      display:flex;align-items:center;justify-content:center;
+    }
+    .card {
+      background:#fff;border-radius:24px;padding:2.5rem;
+      width:100%;max-width:420px;
+      box-shadow:0 30px 80px rgba(0,0,0,.4);
+    }
+    .logo-circle {
+      width:76px;height:76px;border-radius:50%;
+      background:linear-gradient(135deg,#7C6FD4,#3D3066);
+      display:flex;align-items:center;justify-content:center;
+      font-size:2.2rem;margin:0 auto 1rem;
+    }
+    .admin-badge {
+      background:#f0ebff;border-radius:10px;padding:8px 16px;
+      font-size:.8rem;font-weight:700;color:#7C6FD4;
+      text-align:center;margin-bottom:1.5rem;
+    }
+  </style>
+</head>
+<body>
+<div style="width:100%;max-width:420px;padding:1rem">
+  <div class="card">
+    <div class="logo-circle">🛡️</div>
+    <div style="text-align:center;margin-bottom:.5rem">
+      <div style="font-size:1.4rem;font-weight:800;color:var(--text)">
+        Admin Portal
+      </div>
+      <div style="font-size:.85rem;color:var(--muted);margin-top:4px">
+        HealthAI — System Administration
+      </div>
+    </div>
+    <div class="admin-badge">🔒 Restricted Access — Authorized Personnel Only</div>
+
+    <div id="login-alert"></div>
+    <div class="form-group">
+      <label>Admin Username</label>
+      <input type="text" id="l-user" placeholder="admin"
+             onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="l-pass" placeholder="••••••••"
+             onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn btn-primary"
+            style="width:100%;padding:12px;font-size:1rem;
+                   background:linear-gradient(135deg,#7C6FD4,#3D3066)"
+            onclick="doLogin()">
+      🛡️ Admin Login
+    </button>
+
+    <div style="margin-top:1rem;background:#f0ebff;border-radius:10px;
+                padding:12px;font-size:.8rem;color:var(--muted);text-align:center">
+      <b>Demo:</b> admin / admin123
+    </div>
+
+    <div style="margin-top:1.2rem;display:flex;gap:8px;justify-content:center">
+      <a href="/patient-login"
+         style="font-size:.8rem;color:#E8698A;font-weight:600;
+                text-decoration:none">
+        🧑‍⚕️ Patient Portal
+      </a>
+      <span style="color:var(--muted)">|</span>
+      <a href="/doctor-login"
+         style="font-size:.8rem;color:#5B9BD5;font-weight:600;
+                text-decoration:none">
+        👨‍⚕️ Doctor Portal
+      </a>
+    </div>
+  </div>
+</div>
+
+<script>
+async function doLogin() {
+  const username = document.getElementById('l-user').value.trim();
+  const password = document.getElementById('l-pass').value;
+  if (!username||!password) {
+    document.getElementById('login-alert').innerHTML =
+      '<div class="alert alert-error">Enter username and password.</div>';
+    return;
+  }
+  const res  = await fetch('/api/login',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    credentials:'include',
+    body:JSON.stringify({username,password})
+  });
+  const data = await res.json();
+  if (data.success) {
+    if (data.role !== 'admin') {
+      document.getElementById('login-alert').innerHTML =
+        '<div class="alert alert-error">❌ Admin access only.</div>';
+      return;
+    }
+    localStorage.setItem('hai_user', JSON.stringify(data));
+    window.location.href = '/admin-dashboard';
+  } else {
+    document.getElementById('login-alert').innerHTML =
+      `<div class="alert alert-error">❌ ${data.message||'Invalid credentials'}</div>`;
+  }
+}
+</script>
+</body>
+</html>

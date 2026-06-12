@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>HealthAI — Patients</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .dropdown{position:relative}
+    .dropdown-menu{position:absolute;top:calc(100% + 8px);left:0;background:var(--white);
+      border-radius:12px;box-shadow:0 8px 32px rgba(100,80,180,.18);
+      border:1.5px solid var(--border);min-width:200px;z-index:300;display:none;overflow:hidden}
+    .dropdown-menu.show{display:block}
+    .dropdown-item{display:flex;align-items:center;gap:10px;padding:12px 18px;
+      font-size:.88rem;font-weight:500;color:var(--text);text-decoration:none;transition:background .15s}
+    .dropdown-item:hover{background:#f0ebff}
+    .dropdown-divider{height:1px;background:var(--border);margin:4px 0}
+    .modal-overlay{position:fixed;inset:0;background:rgba(60,40,120,.35);z-index:500;
+      display:flex;align-items:center;justify-content:center}
+    .modal-box{background:var(--white);border-radius:20px;padding:2rem;width:100%;
+      max-width:580px;box-shadow:0 20px 60px rgba(100,80,200,.2);max-height:90vh;overflow-y:auto}
+    .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem}
+    .modal-title{font-size:1.15rem;font-weight:800;color:var(--text)}
+    .close-btn{background:var(--pink);border:none;width:32px;height:32px;border-radius:50%;
+      cursor:pointer;font-size:1rem;font-weight:700;color:var(--text)}
+    .patient-avatar{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;
+      justify-content:center;font-weight:800;font-size:1rem;flex-shrink:0;color:var(--text)}
+    .detail-row{display:flex;gap:8px;margin-bottom:8px;font-size:.88rem}
+    .detail-label{font-weight:700;color:var(--muted);min-width:120px}
+    .detail-val{color:var(--text)}
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand"><span class="logo">🏥</span> HealthAI</div>
+  <div class="nav-links">
+    <a href="/dashboard">📊 Dashboard</a>
+    <div class="dropdown" id="dd-patients">
+      <a href="#" class="nav-link-dd" onclick="toggleDD('dd-patients',event)"
+         style="padding:8px 16px;border-radius:8px;text-decoration:none;
+                color:var(--muted);font-size:.9rem;font-weight:500;
+                background:var(--lavender);color:var(--text)">
+        👥 Patients ▾
+      </a>
+      <div class="dropdown-menu" id="dd-patients-menu">
+        <a class="dropdown-item" href="/patients">👥 All Patients</a>
+        <a class="dropdown-item" href="#" onclick="openAddModal();closeAllDD()">➕ Register Patient</a>
+        <div class="dropdown-divider"></div>
+        <a class="dropdown-item" href="/ehr">📋 EHR Records</a>
+      </div>
+    </div>
+    <div class="dropdown" id="dd-ai">
+      <a href="#" class="nav-link-dd" onclick="toggleDD('dd-ai',event)"
+         style="padding:8px 16px;border-radius:8px;text-decoration:none;color:var(--muted);font-size:.9rem;font-weight:500">
+        🧠 AI Tools ▾
+      </a>
+      <div class="dropdown-menu" id="dd-ai-menu">
+        <a class="dropdown-item" href="/predict">🔬 Disease Prediction</a>
+        <a class="dropdown-item" href="/predict#outcome">📈 Outcome Prediction</a>
+        <div class="dropdown-divider"></div>
+        <a class="dropdown-item" href="/predict#history">📊 Prediction History</a>
+      </div>
+    </div>
+    <a href="/appointments">📅 Appointments</a>
+    <a href="/beds">🛏 Beds</a>
+    <a href="/staff">👔 Staff</a>
+  </div>
+  <div class="nav-right">
+    <span id="user-badge"
+      style="background:var(--lavender);padding:6px 14px;border-radius:8px;font-size:.85rem;font-weight:600">
+    </span>
+    <button class="btn-logout" onclick="logout()">Logout</button>
+  </div>
+</nav>
+
+<!-- ── ADD PATIENT MODAL ── -->
+<div class="modal-overlay" id="add-modal" style="display:none">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">➕ Register New Patient</span>
+      <button class="close-btn" onclick="closeAddModal()">✕</button>
+    </div>
+    <div id="add-alert"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Full Name *</label>
+        <input type="text" id="np-name" placeholder="Patient full name"></div>
+      <div class="form-group"><label>Age *</label>
+        <input type="number" id="np-age" placeholder="Age" min="0" max="120"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Gender</label>
+        <select id="np-gender">
+          <option>Male</option><option>Female</option><option>Other</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Blood Group</label>
+        <select id="np-blood">
+          <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+          <option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Phone</label>
+        <input type="text" id="np-phone" placeholder="Mobile number"></div>
+      <div class="form-group"><label>Email</label>
+        <input type="email" id="np-email" placeholder="email@example.com"></div>
+    </div>
+    <div class="form-group"><label>Medical Conditions</label>
+      <input type="text" id="np-conditions" placeholder="e.g. Diabetes, Hypertension"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Allergies</label>
+        <input type="text" id="np-allergies" placeholder="e.g. Penicillin"></div>
+      <div class="form-group"><label>Insurance</label>
+        <input type="text" id="np-insurance" placeholder="Insurance provider"></div>
+    </div>
+    <div class="form-group"><label>Family History</label>
+      <textarea id="np-family" rows="2" placeholder="Relevant family medical history"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:1rem">
+      <button class="btn btn-primary" style="flex:1" onclick="submitPatient()">
+        ✅ Register Patient
+      </button>
+      <button class="btn" style="background:var(--border)" onclick="closeAddModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── VIEW PATIENT MODAL ── -->
+<div class="modal-overlay" id="view-modal" style="display:none">
+  <div class="modal-box" style="max-width:620px">
+    <div class="modal-header">
+      <span class="modal-title">👤 Patient Details</span>
+      <button class="close-btn" onclick="closeViewModal()">✕</button>
+    </div>
+    <div id="view-content"></div>
+    <div style="display:flex;gap:10px;margin-top:1.5rem">
+      <a id="view-predict-btn" href="/predict">
+        <button class="btn btn-info">🧠 AI Predict</button>
+      </a>
+      <a id="view-ehr-btn" href="/ehr">
+        <button class="btn btn-primary">📋 View EHR</button>
+      </a>
+      <button class="btn btn-success" onclick="closeViewModal();openAddModal()">
+        ➕ New Patient
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── EDIT PATIENT MODAL ── -->
+<div class="modal-overlay" id="edit-modal" style="display:none">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">✏️ Edit Patient</span>
+      <button class="close-btn" onclick="closeEditModal()">✕</button>
+    </div>
+    <div id="edit-alert"></div>
+    <input type="hidden" id="ep-id">
+    <div class="form-row">
+      <div class="form-group"><label>Full Name</label>
+        <input type="text" id="ep-name"></div>
+      <div class="form-group"><label>Age</label>
+        <input type="number" id="ep-age"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Gender</label>
+        <select id="ep-gender">
+          <option>Male</option><option>Female</option><option>Other</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Blood Group</label>
+        <select id="ep-blood">
+          <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+          <option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Phone</label>
+        <input type="text" id="ep-phone"></div>
+      <div class="form-group"><label>Medical Conditions</label>
+        <input type="text" id="ep-conditions"></div>
+    </div>
+    <div class="form-group"><label>Allergies</label>
+      <input type="text" id="ep-allergies"></div>
+    <button class="btn btn-primary" style="width:100%;margin-top:1rem"
+            onclick="submitEdit()">💾 Save Changes</button>
+  </div>
+</div>
+
+<!-- ── PAGE CONTENT ── -->
+<div style="padding:2rem;max-width:1200px;margin:0 auto">
+
+  <!-- Hero -->
+  <div style="background:linear-gradient(135deg,#f0e8ff,#e8f8f0);border-radius:var(--radius);
+              padding:1.8rem 2rem;margin-bottom:2rem;
+              display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <h1 style="font-size:1.6rem;font-weight:800;color:var(--text)">👥 Patient Management</h1>
+      <p style="color:var(--muted);margin-top:4px">
+        Register, view, and manage all patient records
+      </p>
+    </div>
+    <button class="btn btn-primary" style="padding:12px 24px;font-size:1rem"
+            onclick="openAddModal()">
+      ➕ Add New Patient
+    </button>
+  </div>
+
+  <!-- Stats -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:2rem"
+       id="pat-stats">
+  </div>
+
+  <!-- Charts -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:2rem">
+    <div class="card">
+      <div class="card-title">📊 Patients by Gender</div>
+      <div style="height:220px"><canvas id="gender-chart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🩸 Blood Group Distribution</div>
+      <div style="height:220px"><canvas id="blood-chart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Search + Table -->
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;
+                flex-wrap:wrap;gap:10px">
+      <div class="card-title" style="margin:0">📋 All Patients</div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <input type="text" id="pat-search" placeholder="🔍 Search by name / blood group…"
+               style="width:260px" oninput="filterPatients()">
+        <select id="pat-filter" onchange="filterPatients()"
+                style="width:140px;padding:10px 14px;border:2px solid var(--border);
+                       border-radius:10px;font-size:.88rem;color:var(--text);background:#faf8ff">
+          <option value="">All Genders</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>Patient</th><th>Age</th><th>Gender</th>
+            <th>Blood</th><th>Phone</th><th>Conditions</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="pat-tbody">
+          <tr><td colspan="8" style="text-align:center;color:var(--muted)">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<script>
+const user = JSON.parse(localStorage.getItem('hai_user') || '{}');
+if (!user.username) window.location.href = '/';
+document.getElementById('user-badge').textContent = `👤 ${user.username} (${user.role})`;
+function logout() { localStorage.removeItem('hai_user'); window.location.href = '/'; }
+
+/* ── DROPDOWN ── */
+function toggleDD(id, e) {
+  e.preventDefault(); e.stopPropagation();
+  const menu = document.getElementById(id + '-menu');
+  const isOpen = menu.classList.contains('show');
+  closeAllDD();
+  if (!isOpen) menu.classList.add('show');
+}
+function closeAllDD() {
+  document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.remove('show'));
+}
+document.addEventListener('click', closeAllDD);
+
+/* ── MODALS ── */
+function openAddModal()   { document.getElementById('add-modal').style.display  = 'flex'; }
+function closeAddModal()  { document.getElementById('add-modal').style.display  = 'none';
+                            document.getElementById('add-alert').innerHTML = ''; }
+function closeViewModal() { document.getElementById('view-modal').style.display = 'none'; }
+function closeEditModal() { document.getElementById('edit-modal').style.display = 'none'; }
+
+/* ── ADD PATIENT ── */
+async function submitPatient() {
+  const name = document.getElementById('np-name').value.trim();
+  if (!name) { alert('Patient name is required'); return; }
+  const body = {
+    name,
+    age:                parseInt(document.getElementById('np-age').value) || 0,
+    gender:             document.getElementById('np-gender').value,
+    blood_group:        document.getElementById('np-blood').value,
+    phone:              document.getElementById('np-phone').value,
+    email:              document.getElementById('np-email').value,
+    medical_conditions: document.getElementById('np-conditions').value,
+    allergies:          document.getElementById('np-allergies').value,
+    insurance:          document.getElementById('np-insurance').value,
+    family_history:     document.getElementById('np-family').value,
+  };
+  const res  = await fetch('/api/patients', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (data.success) {
+    document.getElementById('add-alert').innerHTML =
+      '<div class="alert alert-success">✅ Patient registered successfully!</div>';
+    // Clear fields
+    ['np-name','np-age','np-phone','np-email','np-conditions','np-allergies','np-insurance','np-family']
+      .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+    setTimeout(() => { closeAddModal(); loadAll(); }, 1500);
+  } else {
+    document.getElementById('add-alert').innerHTML =
+      `<div class="alert alert-error">❌ ${data.message || 'Error registering patient'}</div>`;
+  }
+}
+
+/* ── VIEW PATIENT ── */
+const avatarColors = ['#FFB3C6','#C9B8FF','#B5EAD7','#FFD5B8','#B5D5FF','#FFF0A0'];
+function viewPatient(p) {
+  const col = avatarColors[p.id % avatarColors.length];
+  document.getElementById('view-content').innerHTML = `
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:1.5rem;
+                background:#f8f5ff;border-radius:12px;padding:16px">
+      <div class="patient-avatar" style="background:${col};width:60px;height:60px;font-size:1.4rem">
+        ${(p.name||'?')[0].toUpperCase()}
+      </div>
+      <div>
+        <div style="font-size:1.2rem;font-weight:800;color:var(--text)">${p.name}</div>
+        <div style="color:var(--muted);font-size:.85rem">
+          Patient ID: P-${String(p.id).padStart(4,'0')}
+        </div>
+      </div>
+      <div style="margin-left:auto">
+        <span class="badge badge-purple">${p.blood_group || '—'}</span>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${detail('Age', p.age || '—')}
+      ${detail('Gender', p.gender || '—')}
+      ${detail('Phone', p.phone || '—')}
+      ${detail('Email', p.email || '—')}
+      ${detail('Medical Conditions', p.medical_conditions || 'None')}
+      ${detail('Allergies', p.allergies || 'None')}
+      ${detail('Insurance', p.insurance || '—')}
+      ${detail('Family History', p.family_history || 'None')}
+    </div>`;
+  document.getElementById('view-predict-btn').href = '/predict';
+  document.getElementById('view-ehr-btn').href     = '/ehr';
+  document.getElementById('view-modal').style.display = 'flex';
+}
+function detail(label, val) {
+  return `<div class="detail-row">
+    <span class="detail-label">${label}:</span>
+    <span class="detail-val">${val}</span>
+  </div>`;
+}
+
+/* ── EDIT PATIENT ── */
+function editPatient(p) {
+  document.getElementById('ep-id').value         = p.id;
+  document.getElementById('ep-name').value       = p.name || '';
+  document.getElementById('ep-age').value        = p.age  || '';
+  document.getElementById('ep-gender').value     = p.gender || 'Male';
+  document.getElementById('ep-blood').value      = p.blood_group || 'O+';
+  document.getElementById('ep-phone').value      = p.phone || '';
+  document.getElementById('ep-conditions').value = p.medical_conditions || '';
+  document.getElementById('ep-allergies').value  = p.allergies || '';
+  document.getElementById('edit-modal').style.display = 'flex';
+}
+async function submitEdit() {
+  const id = document.getElementById('ep-id').value;
+  const body = {
+    name:               document.getElementById('ep-name').value,
+    age:                parseInt(document.getElementById('ep-age').value) || 0,
+    gender:             document.getElementById('ep-gender').value,
+    blood_group:        document.getElementById('ep-blood').value,
+    phone:              document.getElementById('ep-phone').value,
+    medical_conditions: document.getElementById('ep-conditions').value,
+    allergies:          document.getElementById('ep-allergies').value,
+  };
+  const res  = await fetch(`/api/patients/${id}`, {
+    method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (data.success) {
+    document.getElementById('edit-alert').innerHTML =
+      '<div class="alert alert-success">✅ Patient updated!</div>';
+    setTimeout(() => { closeEditModal(); loadAll(); }, 1200);
+  } else {
+    document.getElementById('edit-alert').innerHTML =
+      `<div class="alert alert-error">❌ ${data.message}</div>`;
+  }
+}
+
+/* ── LOAD + RENDER ── */
+let allPatients = [];
+async function loadAll() {
+  allPatients = await fetch('/api/patients').then(r => r.json());
+  renderPatients(allPatients);
+  renderStats(allPatients);
+  drawCharts(allPatients);
+}
+
+function renderPatients(list) {
+  if (!list.length) {
+    document.getElementById('pat-tbody').innerHTML =
+      '<tr><td colspan="8" style="text-align:center;color:var(--muted)">No patients found. Click "Add New Patient" to register one.</td></tr>';
+    return;
+  }
+  document.getElementById('pat-tbody').innerHTML = list.map((p, i) => {
+    const col = avatarColors[p.id % avatarColors.length];
+    return `
+    <tr>
+      <td><b>P-${String(p.id).padStart(4,'0')}</b></td>
+      <td>
+        // Replace the Actions td inside renderPatients:
+      <td>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="btn btn-info"
+            style="padding:4px 8px;font-size:.73rem"
+            onclick='viewPatient(${JSON.stringify(p).replace(/'/g,"&#39;")})'>
+            👁 View
+          </button>
+          <button class="btn btn-primary"
+            style="padding:4px 8px;font-size:.73rem"
+            onclick='editPatient(${JSON.stringify(p).replace(/'/g,"&#39;")})'>
+            ✏️ Edit
+          </button>
+          <a href="/predict">
+            <button class="btn btn-success"
+              style="padding:4px 8px;font-size:.73rem">🧠 AI</button>
+          </a>
+          <button class="btn"
+            style="padding:4px 8px;font-size:.73rem;
+                   background:linear-gradient(135deg,#B5EAD7,#96d9be);color:var(--text)"
+            onclick="downloadPredPDF(${p.id},'${p.name.replace(/'/g,'')}')">
+            📥 Predict
+          </button>
+          <button class="btn"
+            style="padding:4px 8px;font-size:.73rem;
+                   background:linear-gradient(135deg,#FFD5B8,#ffbe8a);color:var(--text)"
+            onclick="downloadFullPDF(${p.id},'${p.name.replace(/'/g,'')}')">
+            📁 Full
+          </button>
+        </div>
+      </td>
+      <td>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="btn btn-info"
+            style="padding:4px 10px;font-size:.73rem"
+            onclick='viewPatient(${JSON.stringify(p).replace(/'/g,"&#39;")})'>
+            👁 View
+          </button>
+          <button class="btn btn-primary"
+            style="padding:4px 10px;font-size:.73rem"
+            onclick='editPatient(${JSON.stringify(p).replace(/'/g,"&#39;")})'>
+            ✏️ Edit
+          </button>
+          <a href="/predict">
+            <button class="btn btn-success"
+              style="padding:4px 10px;font-size:.73rem">
+              🧠 AI
+            </button>
+          </a>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderStats(list) {
+  const males   = list.filter(p => p.gender === 'Male').length;
+  const females = list.filter(p => p.gender === 'Female').length;
+  const withCond= list.filter(p => p.medical_conditions && p.medical_conditions.trim()).length;
+  const cards = [
+    { icon:'👥', label:'Total Patients',    val:list.length,   cls:'pink' },
+    { icon:'👨', label:'Male Patients',      val:males,         cls:'sky' },
+    { icon:'👩', label:'Female Patients',    val:females,       cls:'lavender' },
+    { icon:'⚕️', label:'With Conditions',   val:withCond,      cls:'peach' },
+  ];
+  document.getElementById('pat-stats').innerHTML = cards.map(c => `
+    <div class="stat-card ${c.cls}" style="border-radius:var(--radius);padding:1.2rem;text-align:center">
+      <div style="font-size:1.8rem">${c.icon}</div>
+      <div class="stat-num" style="font-size:2rem">${c.val}</div>
+      <div class="stat-label">${c.label}</div>
+    </div>`).join('');
+}
+
+let genderChart = null, bloodChart = null;
+function drawCharts(list) {
+  // Gender
+  const males   = list.filter(p => p.gender === 'Male').length;
+  const females = list.filter(p => p.gender === 'Female').length;
+  const other   = list.filter(p => p.gender === 'Other').length;
+
+  if (genderChart) genderChart.destroy();
+  genderChart = new Chart(document.getElementById('gender-chart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Male','Female','Other'],
+      datasets: [{
+        data: [males, females, other],
+        backgroundColor: ['#B5D5FF','#FFB3C6','#B5EAD7'],
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, cutout:'60%',
+      plugins:{ legend:{ position:'bottom' } }
+    }
+  });
+
+  // Blood groups
+  const bloodGroups = ['A+','A-','B+','B-','O+','O-','AB+','AB-'];
+  const bloodCounts = bloodGroups.map(bg =>
+    list.filter(p => p.blood_group === bg).length
+  );
+  if (bloodChart) bloodChart.destroy();
+  bloodChart = new Chart(document.getElementById('blood-chart'), {
+    type: 'bar',
+    data: {
+      labels: bloodGroups,
+      datasets: [{
+        label: 'Patients',
+        data: bloodCounts,
+        backgroundColor: ['#FFB3C6','#C9B8FF','#B5EAD7','#FFD5B8','#B5D5FF','#FFF0A0','#FFB3C6','#C9B8FF'],
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{ y:{ beginAtZero:true, ticks:{ stepSize:1 } } }
+    }
+  });
+}
+
+function filterPatients() {
+  const q   = document.getElementById('pat-search').value.toLowerCase();
+  const gen = document.getElementById('pat-filter').value;
+  const filtered = allPatients.filter(p => {
+    const matchQ = (p.name||'').toLowerCase().includes(q) ||
+                   (p.blood_group||'').toLowerCase().includes(q) ||
+                   (p.phone||'').toLowerCase().includes(q);
+    const matchG = !gen || p.gender === gen;
+    return matchQ && matchG;
+  });
+  renderPatients(filtered);
+}
+function downloadPredPDF(pid, name) {
+  window.open(`/api/reports/patient/${pid}/predictions`, '_blank');
+}
+function downloadFullPDF(pid, name) {
+  window.open(`/api/reports/patient/${pid}/full`, '_blank');
+}
+
+loadAll();
+</script>
+</body>
+</html>

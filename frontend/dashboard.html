@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>HealthAI — Smart Healthcare System</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* ── DROPDOWN ── */
+    .dropdown { position:relative; }
+    .dropdown-menu {
+      position:absolute; top:calc(100% + 8px); left:0;
+      background:var(--white); border-radius:12px;
+      box-shadow:0 8px 32px rgba(100,80,180,.18);
+      border:1.5px solid var(--border);
+      min-width:200px; z-index:300; display:none; overflow:hidden;
+    }
+    .dropdown-menu.show { display:block; }
+    .dropdown-item {
+      display:flex; align-items:center; gap:10px;
+      padding:12px 18px; font-size:.88rem; font-weight:500;
+      color:var(--text); text-decoration:none; transition:background .15s;
+    }
+    .dropdown-item:hover { background:#f0ebff; }
+    .dropdown-divider { height:1px; background:var(--border); margin:4px 0; }
+
+    /* ── NOTIFICATION PANEL ── */
+    .notif-panel {
+      position:fixed; top:70px; right:20px; width:360px;
+      background:var(--white); border-radius:var(--radius);
+      box-shadow:0 8px 40px rgba(100,80,180,.2);
+      border:1.5px solid var(--border); z-index:999;
+      display:none; max-height:480px; overflow-y:auto;
+    }
+    .notif-header {
+      padding:14px 18px; border-bottom:1px solid var(--border);
+      display:flex; justify-content:space-between; align-items:center;
+      font-weight:700; color:var(--text); position:sticky; top:0;
+      background:var(--white);
+    }
+    .notif-item {
+      padding:12px 18px; border-bottom:1px solid var(--border);
+      font-size:.85rem; display:flex; gap:10px; align-items:flex-start;
+      cursor:pointer;
+    }
+    .notif-item:hover { background:#faf8ff; }
+    .notif-dot { width:8px; height:8px; border-radius:50%; margin-top:5px; flex-shrink:0; }
+    .dot-success{background:#2d9e6a} .dot-info{background:#5b8dee}
+    .dot-warning{background:#f4a261} .dot-error{background:#e74c3c}
+    .notif-badge {
+      position:absolute; top:-5px; right:-5px;
+      background:#e74c3c; color:#fff; border-radius:50%;
+      width:18px; height:18px; font-size:.65rem;
+      display:flex; align-items:center; justify-content:center; font-weight:700;
+    }
+    .notif-btn {
+      position:relative; cursor:pointer; padding:8px 12px;
+      border-radius:10px; font-size:1.2rem; transition:background .2s;
+      border:2px solid var(--border); background:var(--white);
+    }
+    .notif-btn:hover { background:var(--lavender); }
+  </style>
+</head>
+<body>
+
+<!-- ── NAVBAR ── -->
+<nav>
+  <div class="nav-brand"><span class="logo">🏥</span> HealthAI</div>
+  <div class="nav-links">
+    <a href="/dashboard" class="active">📊 Dashboard</a>
+
+    <!-- Patients dropdown -->
+    <div class="dropdown" id="dd-patients">
+      <a href="#" class="nav-link-dd" onclick="toggleDD('dd-patients',event)">
+        👥 Patients ▾
+      </a>
+      <div class="dropdown-menu" id="dd-patients-menu">
+        <a class="dropdown-item" href="/patients">👥 All Patients</a>
+        <a class="dropdown-item" href="#" onclick="openAddPatient();closeAllDD()">➕ Register Patient</a>
+        <div class="dropdown-divider"></div>
+        <a class="dropdown-item" href="/ehr">📋 EHR Records</a>
+      </div>
+    </div>
+
+    <!-- AI Tools dropdown -->
+    <div class="dropdown" id="dd-ai">
+      <a href="#" class="nav-link-dd" onclick="toggleDD('dd-ai',event)">
+        🧠 AI Tools ▾
+      </a>
+      <div class="dropdown-menu" id="dd-ai-menu">
+        <a class="dropdown-item" href="/predict">🔬 Disease Prediction</a>
+        <a class="dropdown-item" href="/predict#outcome">📈 Outcome Prediction</a>
+        <div class="dropdown-divider"></div>
+        <a class="dropdown-item" href="/predict#history">📊 Prediction History</a>
+      </div>
+    </div>
+
+    <a href="/appointments">📅 Appointments</a>
+    <a href="/beds">🛏 Beds</a>
+    <a href="/staff">👔 Staff</a>
+  </div>
+  <div class="nav-right">
+    <div class="notif-btn" onclick="toggleNotifs()" id="notif-btn">
+      🔔
+      <span class="notif-badge" id="notif-badge" style="display:none">0</span>
+    </div>
+    <span id="user-badge"
+      style="background:var(--lavender);padding:6px 14px;border-radius:8px;font-size:.85rem;font-weight:600">
+    </span>
+    <button class="btn-logout" onclick="logout()">Logout</button>
+  </div>
+</nav>
+
+<!-- Notification Panel -->
+<div class="notif-panel" id="notif-panel">
+  <div class="notif-header">
+    🔔 Notifications
+    <button class="btn btn-info" style="padding:4px 12px;font-size:.75rem"
+            onclick="markAllRead()">Mark all read</button>
+  </div>
+  <div id="notif-list">
+    <div style="padding:20px;text-align:center;color:var(--muted)">Loading…</div>
+  </div>
+</div>
+
+<!-- Add Patient Modal (accessible from navbar) -->
+<div id="add-patient-modal"
+  style="display:none;position:fixed;inset:0;background:rgba(60,40,120,.35);z-index:500;
+         align-items:center;justify-content:center">
+  <div style="background:var(--white);border-radius:20px;padding:2rem;width:100%;
+              max-width:560px;box-shadow:0 20px 60px rgba(100,80,200,.2);
+              max-height:90vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem">
+      <span style="font-size:1.15rem;font-weight:800;color:var(--text)">➕ Register New Patient</span>
+      <button onclick="closeAddPatient()"
+        style="background:var(--pink);border:none;width:32px;height:32px;
+               border-radius:50%;cursor:pointer;font-size:1rem;font-weight:700">✕</button>
+    </div>
+    <div id="addpat-alert"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Full Name *</label>
+        <input type="text" id="np-name" placeholder="Patient full name"></div>
+      <div class="form-group"><label>Age *</label>
+        <input type="number" id="np-age" placeholder="Age" min="0" max="120"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Gender</label>
+        <select id="np-gender">
+          <option>Male</option><option>Female</option><option>Other</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Blood Group</label>
+        <select id="np-blood">
+          <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+          <option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Phone</label>
+        <input type="text" id="np-phone" placeholder="Mobile number"></div>
+      <div class="form-group"><label>Email</label>
+        <input type="email" id="np-email" placeholder="email@example.com"></div>
+    </div>
+    <div class="form-group"><label>Medical Conditions</label>
+      <input type="text" id="np-conditions" placeholder="e.g. Diabetes, Hypertension"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Allergies</label>
+        <input type="text" id="np-allergies" placeholder="e.g. Penicillin"></div>
+      <div class="form-group"><label>Insurance</label>
+        <input type="text" id="np-insurance" placeholder="Insurance provider"></div>
+    </div>
+    <div class="form-group"><label>Family History</label>
+      <textarea id="np-family" rows="2" placeholder="Relevant family medical history"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:1rem">
+      <button class="btn btn-primary" style="flex:1" onclick="submitNewPatient()">
+        ✅ Register Patient
+      </button>
+      <button class="btn" style="background:var(--border)" onclick="closeAddPatient()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── PAGE CONTENT ── -->
+<div style="padding:2rem;max-width:1300px;margin:0 auto">
+
+  <!-- Hero -->
+  <div style="background:linear-gradient(135deg,#f0e8ff,#e8f8f0);border-radius:var(--radius);
+              padding:1.8rem 2rem;margin-bottom:2rem;
+              display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <h1 style="font-size:1.7rem;font-weight:800;color:var(--text)">📊 Admin Dashboard</h1>
+      <p style="color:var(--muted);margin-top:4px">
+        Real-time overview of hospital operations &amp; AI insights
+      </p>
+    </div>
+    <span style="background:var(--mint);color:#2d6a4f;
+                 padding:6px 16px;border-radius:20px;font-size:.85rem;font-weight:700">
+      ● System Online
+    </span>
+  </div>
+
+  <!-- Stat cards -->
+  <div id="stats-grid"
+    style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:2rem">
+  </div>
+
+  <!-- Charts row -->
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:1.5rem;margin-bottom:1.5rem">
+    <div class="card">
+      <div class="card-title">📈 Weekly Patient Admissions</div>
+      <div class="chart-container"><canvas id="admissions-chart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🍩 Disease Distribution</div>
+      <div class="chart-container"><canvas id="disease-chart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Recent appointments -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <div class="card-title" style="margin:0">📅 Today's Appointments</div>
+      <a href="/appointments">
+        <button class="btn btn-primary">View All →</button>
+      </a>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Patient</th><th>Doctor</th><th>Dept</th><th>Time</th><th>Type</th><th>Status</th></tr>
+      </thead>
+      <tbody id="dash-appts">
+        <tr><td colspan="6" style="text-align:center;color:var(--muted)">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div><!-- /page content -->
+
+<script>
+const user = JSON.parse(localStorage.getItem('hai_user') || '{}');
+if (!user.username) { window.location.href = '/'; }
+document.getElementById('user-badge').textContent =
+  `👤 ${user.username} (${user.role})`;
+
+function logout() {
+  localStorage.removeItem('hai_user');
+  window.location.href = '/';
+}
+
+/* ── DROPDOWN ── */
+function toggleDD(id, e) {
+  e.preventDefault(); e.stopPropagation();
+  const menu = document.getElementById(id + '-menu');
+  const isOpen = menu.classList.contains('show');
+  closeAllDD();
+  if (!isOpen) menu.classList.add('show');
+}
+function closeAllDD() {
+  document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.remove('show'));
+}
+document.addEventListener('click', closeAllDD);
+
+/* ── NOTIFICATIONS ── */
+let notifOpen = false;
+function toggleNotifs() {
+  notifOpen = !notifOpen;
+  document.getElementById('notif-panel').style.display = notifOpen ? 'block' : 'none';
+  if (notifOpen) loadNotifications();
+}
+document.addEventListener('click', e => {
+  const panel = document.getElementById('notif-panel');
+  const btn   = document.getElementById('notif-btn');
+  if (notifOpen && !panel.contains(e.target) && !btn.contains(e.target)) {
+    notifOpen = false; panel.style.display = 'none';
+  }
+});
+async function loadNotifications() {
+  const data = await fetch('/api/notifications').then(r => r.json());
+  const typeIcon = { success:'🟢', info:'🔵', warning:'🟡', error:'🔴' };
+  document.getElementById('notif-list').innerHTML = data.length
+    ? data.map(n => `
+        <div class="notif-item" style="${!n.is_read ? 'background:#f8f5ff' : ''}">
+          <span class="notif-dot dot-${n.type}"></span>
+          <div style="flex:1">
+            <div style="color:var(--text);font-size:.85rem">${n.message}</div>
+            <div style="color:var(--muted);font-size:.73rem;margin-top:2px">${n.created_at}</div>
+          </div>
+        </div>`).join('')
+    : '<div style="padding:20px;text-align:center;color:var(--muted)">No notifications</div>';
+}
+async function markAllRead() {
+  await fetch('/api/notifications/read', { method: 'POST' });
+  document.getElementById('notif-badge').style.display = 'none';
+  loadNotifications();
+}
+async function refreshBadge() {
+  const d = await fetch('/api/notifications/unread-count').then(r => r.json());
+  const badge = document.getElementById('notif-badge');
+  badge.textContent = d.count;
+  badge.style.display = d.count > 0 ? 'flex' : 'none';
+}
+
+/* ── ADD PATIENT MODAL ── */
+function openAddPatient()  { document.getElementById('add-patient-modal').style.display = 'flex'; }
+function closeAddPatient() { document.getElementById('add-patient-modal').style.display = 'none'; }
+async function submitNewPatient() {
+  const name = document.getElementById('np-name').value.trim();
+  if (!name) { alert('Patient name is required'); return; }
+  const body = {
+    name,
+    age:               parseInt(document.getElementById('np-age').value) || 0,
+    gender:            document.getElementById('np-gender').value,
+    blood_group:       document.getElementById('np-blood').value,
+    phone:             document.getElementById('np-phone').value,
+    email:             document.getElementById('np-email').value,
+    medical_conditions:document.getElementById('np-conditions').value,
+    allergies:         document.getElementById('np-allergies').value,
+    insurance:         document.getElementById('np-insurance').value,
+    family_history:    document.getElementById('np-family').value,
+  };
+  const res  = await fetch('/api/patients', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (data.success) {
+    document.getElementById('addpat-alert').innerHTML =
+      '<div class="alert alert-success">✅ Patient registered successfully!</div>';
+    setTimeout(() => { closeAddPatient(); loadStats(); }, 1500);
+  } else {
+    document.getElementById('addpat-alert').innerHTML =
+      `<div class="alert alert-error">❌ ${data.message}</div>`;
+  }
+}
+
+/* ── STATS ── */
+async function loadStats() {
+  const s = await fetch('/api/stats').then(r => r.json());
+  const cards = [
+    { icon:'👥', label:'Total Patients',     val: s.patients,
+      sub:`↑ Active`,                          cls:'pink' },
+    { icon:'👨‍⚕️', label:'Active Doctors',      val: s.doctors,
+      sub:`All on shift`,                      cls:'lavender' },
+    { icon:'📅', label:'Appointments Today', val: s.today_appts,
+      sub:`${s.pending_appts} pending`,        cls:'sky' },
+    { icon:'🛏', label:'Available Beds',     val: s.available_beds,
+      sub:`ICU: ${s.icu_available || 0} free`, cls:'mint' },
+  ];
+  document.getElementById('stats-grid').innerHTML = cards.map(c => `
+    <div class="stat-card ${c.cls}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div class="stat-num">${c.val}</div>
+          <div class="stat-label">${c.label}</div>
+        </div>
+        <div style="font-size:2rem">${c.icon}</div>
+      </div>
+      <div style="margin-top:10px">
+        <span class="badge badge-green" style="font-size:.73rem">${c.sub}</span>
+      </div>
+    </div>`).join('');
+}
+
+/* ── CHARTS ── */
+function drawCharts() {
+  new Chart(document.getElementById('admissions-chart'), {
+    type: 'bar',
+    data: {
+      labels: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+      datasets: [
+        { label:'Admissions', data:[30,43,35,51,40,25,35],
+          backgroundColor:'#C9B8FF', borderRadius:6 },
+        { label:'Discharges', data:[20,35,30,41,35,20,25],
+          backgroundColor:'#B5EAD7', borderRadius:6 },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:'top' } },
+      scales:{ y:{ beginAtZero:true } }
+    }
+  });
+  new Chart(document.getElementById('disease-chart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Diabetes','Heart','Kidney','Cancer','Other'],
+      datasets: [{
+        data: [30,25,20,12,13],
+        backgroundColor:['#FFB3C6','#C9B8FF','#B5EAD7','#FFD5B8','#B5D5FF'],
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, cutout:'65%',
+      plugins:{ legend:{ position:'bottom' } }
+    }
+  });
+}
+
+/* ── APPOINTMENTS TABLE ── */
+async function loadAppts() {
+  const appts = await fetch('/api/appointments').then(r => r.json());
+  const colors = { pending:'yellow', confirmed:'green', cancelled:'red', completed:'blue' };
+  document.getElementById('dash-appts').innerHTML = appts.slice(0, 6).map(a => `
+    <tr>
+      <td><b>${a.patient_name || '—'}</b></td>
+      <td>${a.doctor_name    || '—'}</td>
+      <td>${a.department     || '—'}</td>
+      <td>${a.time_slot      || '—'}</td>
+      <td>${a.type           || '—'}</td>
+      <td><span class="badge badge-${colors[a.status] || 'blue'}">${a.status}</span></td>
+    </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No appointments today</td></tr>';
+}
+
+/* ── INIT ── */
+(async () => {
+  await loadStats();
+  drawCharts();
+  loadAppts();
+  refreshBadge();
+  setInterval(refreshBadge, 30000);
+})();
+</script>
+</body>
+</html>
